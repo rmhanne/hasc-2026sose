@@ -21,7 +21,7 @@ public:
   void run () const
   {
     for (int k=0; k<s; k++) {
-      int i=s;
+      int i=x[0];
       while (i!=0) i=x[i];
     }
   }

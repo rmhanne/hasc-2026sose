@@ -2,7 +2,8 @@
 CC = g++-mp-9
 
 # compilation flags without GMP stuff
-CCFLAGS = -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fno-strict-aliasing
+#CCFLAGS = -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS = -O3 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 #CCFLAGS = -O0
 
 # linker flags without GMP stuff
