@@ -2,6 +2,9 @@
 #include <vector>
 
 #include "time_experiment.hh"
+
+// This assumes that vector class library
+// is available in the directory vcl
 #include "vcl/vectorclass.h"
 
 const int M = 64;
