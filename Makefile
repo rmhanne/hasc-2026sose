@@ -1,5 +1,7 @@
 # define your compiler
 CC = g++-mp-9
+# CC = g++-8
+# CC = g++-10
 
 # compilation flags without GMP stuff
 # no vectorization
@@ -9,6 +11,7 @@ CCFLAGS = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fno-math-errno -fabi-v
 
 # linker flags without GMP stuff
 LFLAGS = -lm
+# LFLAGS = -lm -pthread # In case you need to link against pthread
 
 all: scalar_product_v1\
      scalar_product_v0\
