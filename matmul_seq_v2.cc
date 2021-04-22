@@ -7,16 +7,19 @@
 // is available in the directory vcl
 #include "vcl/vectorclass.h"
 
-const int M = 48;
-const int N = 128*M;
-double A[N][N] __attribute__((aligned(64)));
-double B[N][N] __attribute__((aligned(64)));
-double C[N][N] __attribute__((aligned(64)));
+const int P = 24;   // basic block size is a multiple of 4, 8 and 12
+const int Q = 4;    // multiplier
+const int M = P*Q;  // tile size
+const int N = P*256;// maximum problem size; 
+double A1[N][N] __attribute__((aligned(64))); // input matrix 1
+double B1[N][N] __attribute__((aligned(64))); // input matrix 2
+double C1[N][N] __attribute__((aligned(64))); // output matrix 1
+double C0[N][N] __attribute__((aligned(64))); // output matrix 2
 
-// initialize
+// initialize all entries up to N
 void initialize (double A[N][N], double B[N][N], double C[N][N])
 {
-  int i,j,k;
+  int i,j;
 
   for (i=0; i<N; i++)
     for (j=0; j<N; j++)
@@ -27,7 +30,30 @@ void initialize (double A[N][N], double B[N][N], double C[N][N])
       }
 }
 
-// vanilla with SIMD vectorization of 4x4 matmul C = A*B + C
+// norm of difference of two matrices
+double compare (int n, double A1[N][N], double A2[N][N])
+{
+  int i,j;
+  double sum = 0.0;
+
+  for (i=0; i<n; i++)
+    for (j=0; j<n; j++)
+      sum += std::abs(A1[i][j]-A2[i][j]);
+  return sum;
+}
+
+// naive matmul C = A*B + C; this gives the right result for comparison
+void matmul0 (int n, double A[N][N], double B[N][N], double C[N][N])
+{
+  int i,j,k;
+
+  for (i=0; i<n; i++)
+    for (j=0; j<n; j++)
+      for (k=0; k<n; k++)
+        C[i][j] += A[i][k]*B[k][j];
+}
+
+// non-tiled version with SIMD vectorization of 4x4 matmul C = A*B + C
 void matmul1 (int n, double A[N][N], double B[N][N], double C[N][N])
 {
   Vec4d Brow[4], Crow[4], AXX;
@@ -60,7 +86,7 @@ void matmul1 (int n, double A[N][N], double B[N][N], double C[N][N])
       }
 }
 
-// now tiling with SIMD vectorization of 4x4 matmul C = A*B + C
+// tiled version with SIMD vectorization of 4x4 matmul C = A*B + C
 void matmul2 (int n, double A[N][N], double B[N][N], double C[N][N])
 {
   Vec4d Brow[4], Crow[4], AXX;
@@ -96,104 +122,104 @@ void matmul2 (int n, double A[N][N], double B[N][N], double C[N][N])
             }
 }
 
-// tiling and SIMD with vectorization of 8x8 matmul C = A*B + C
+// tiling and SIMD with vectorization of 4x8 blocks
 void matmul3 (int n, double A[N][N], double B[N][N], double C[N][N])
 {
-  Vec4d CC[4][2], BB[2], AA[2];
+  Vec4d CC[4][2], BB[2], AA[2]; // use two A registers for prefetching
   
   for (int i=0; i<n; i+=M) // loop over tiles
     for (int j=0; j<n; j+=M)
       for (int k=0; k<n; k+=M)
-        for (int s=i; s<i+M; s+=8) // loop over 8x8 blocks (assume M is multiple of 8) for better cache line use
+        for (int s=i; s<i+M; s+=4) // loop over 4x8 blocks
           for (int t=j; t<j+M; t+=8)
-            for (int ii=0; ii<8; ii+=4) // do 4 rows of C at a time
-              {
-                for (int p=0; p<4; ++p)
-                  {
-                    // load store amortized over M/8 matrix multiplications
-                    CC[p][0].load(&C[s+ii+p][t]); CC[p][1].load(&C[s+ii+p][t+4]); 
-                  }
-                for (int u=k; u<k+M; u+=8)
-                  for (int q=0; q<8; q+=1)
-                    {
-                       // 2 loads of B now amortized over ... 8 fmas
-                      AA[0] = Vec4d(A[s+ii+0][u+q]); // load-broadcast
-                      BB[0].load(&B[u+q][t]); BB[1].load(&B[u+q][t+4]);
-
-                      // now process one half column of A
-                      AA[1] = Vec4d(A[s+ii+1][u+q]); // load-broadcast
-                      CC[0][0] = mul_add(AA[0],BB[0],CC[0][0]);
-                      CC[0][1] = mul_add(AA[0],BB[1],CC[0][1]);
-
-                      AA[0] = Vec4d(A[s+ii+2][u+q]); // load-broadcast
-                      CC[1][0] = mul_add(AA[1],BB[0],CC[1][0]);
-                      CC[1][1] = mul_add(AA[1],BB[1],CC[1][1]);
-
-                      AA[1] = Vec4d(A[s+ii+3][u+q]); // load-broadcast
-                      CC[2][0] = mul_add(AA[0],BB[0],CC[2][0]);
-                      CC[2][1] = mul_add(AA[0],BB[1],CC[2][1]);
-
-                      CC[3][0] = mul_add(AA[1],BB[0],CC[3][0]);
-                      CC[3][1] = mul_add(AA[1],BB[1],CC[3][1]);
-                    }
-                for (int p=0; p<4; ++p)
-                  {
-                    // load store amortized over M/8 matrix multiplications
-                    CC[p][0].store(&C[s+ii+p][t]); CC[p][1].store(&C[s+ii+p][t+4]); 
-                  }
-              }
+	    // C_st is a 4x8 block which is loaded now
+	    {
+	      for (int p=0; p<4; ++p)
+		{
+		  // load store amortized over M/8 matrix multiplications
+		  CC[p][0].load(&C[s+p][t]); CC[p][1].load(&C[s+p][t+4]); 
+		}
+	      for (int u=k; u<k+M; u+=8)
+		for (int q=0; q<8; q+=1)
+		  {
+		    // 2 loads of B now amortized over ... 8 fmas
+		    AA[0] = Vec4d(A[s+0][u+q]); // load-broadcast prefetch
+		    BB[0].load(&B[u+q][t]); BB[1].load(&B[u+q][t+4]);
+		    
+		    // now process one half column of A
+		    AA[1] = Vec4d(A[s+1][u+q]); // load-broadcast prefetch
+		    CC[0][0] = mul_add(AA[0],BB[0],CC[0][0]);
+		    CC[0][1] = mul_add(AA[0],BB[1],CC[0][1]);
+		    
+		    AA[0] = Vec4d(A[s+2][u+q]); // load-broadcast prefetch
+		    CC[1][0] = mul_add(AA[1],BB[0],CC[1][0]);
+		    CC[1][1] = mul_add(AA[1],BB[1],CC[1][1]);
+		    
+		    AA[1] = Vec4d(A[s+3][u+q]); // load-broadcast prefetch
+		    CC[2][0] = mul_add(AA[0],BB[0],CC[2][0]);
+		    CC[2][1] = mul_add(AA[0],BB[1],CC[2][1]);
+		    
+		    CC[3][0] = mul_add(AA[1],BB[0],CC[3][0]);
+		    CC[3][1] = mul_add(AA[1],BB[1],CC[3][1]);
+		  }
+	      for (int p=0; p<4; ++p)
+		{
+		  CC[p][0].store(&C[s+p][t]); CC[p][1].store(&C[s+p][t+4]); 
+		}
+	    }
 }
 
-// tiling and SIMD with vectorization of 8x8 matmul C = A*B + C
-void matmul3b (int n, double A[N][N], double B[N][N], double C[N][N])
+// tiling and SIMD with vectorization of 4x12 blocks
+void matmul4 (int n, double A[N][N], double B[N][N], double C[N][N])
 {
   Vec4d CC[4][3], BB[3], AA; // fits exactly 16 registers
   
   for (int i=0; i<n; i+=M) // loop over tiles
     for (int j=0; j<n; j+=M)
       for (int k=0; k<n; k+=M)
-        for (int s=i; s<i+M; s+=12) // loop over 12x12 blocks (assume M is multiple of 12) for better cache line use
+        for (int s=i; s<i+M; s+=4) // loop over 4x12 blocks of C within the tiles
           for (int t=j; t<j+M; t+=12)
-            for (int ii=0; ii<12; ii+=4) // do 4 rows of C at a time
-              {
-                for (int p=0; p<4; ++p)
-                  {
-                    // load store amortized over M/8 matrix multiplications
-                    CC[p][0].load(&C[s+ii+p][t]); CC[p][1].load(&C[s+ii+p][t+4]); CC[p][2].load(&C[s+ii+p][t+8]);
-                  }
-                for (int u=k; u<k+M; u+=12)
-                  for (int q=0; q<12; q+=1)
-                    {
-                       // 3 loads of B now amortized over ... 12 fmas
-                      BB[0].load(&B[u+q][t]); BB[1].load(&B[u+q][t+4]); BB[2].load(&B[u+q][t+8]);
+	    {
+	      // C_st is aa 4x12 block which is loaded now
+	      for (int p=0; p<4; ++p)
+		{
+		  // load store amortized over M/8 matrix multiplications
+		  CC[p][0].load(&C[s+p][t]); CC[p][1].load(&C[s+p][t+4]); CC[p][2].load(&C[s+p][t+8]);
+		}
+	      for (int u=k; u<k+M; u+=12)
+		// C_st += A_su*B_ut where now A_su is 4x12 and B_ut is 12x12
+		for (int q=0; q<12; q+=1) // columns of A / rows of B
+		  {
+		    // 3 loads of B now amortized over ... 12 fmas
+		    BB[0].load(&B[u+q][t]); BB[1].load(&B[u+q][t+4]); BB[2].load(&B[u+q][t+8]);
 
-                      // now process one half column of A
-                      AA = Vec4d(A[s+ii+0][u+q]); // load-broadcast
-                      CC[0][0] = mul_add(AA,BB[0],CC[0][0]);
-                      CC[0][1] = mul_add(AA,BB[1],CC[0][1]);
-                      CC[0][2] = mul_add(AA,BB[2],CC[0][2]);
+		    AA = Vec4d(A[s][u+q]); // load-broadcast
+		    CC[0][0] = mul_add(AA,BB[0],CC[0][0]);
+		    CC[0][1] = mul_add(AA,BB[1],CC[0][1]);
+		    CC[0][2] = mul_add(AA,BB[2],CC[0][2]);
 
-                      AA = Vec4d(A[s+ii+1][u+q]); // load-broadcast
-                      CC[1][0] = mul_add(AA,BB[0],CC[1][0]);
-                      CC[1][1] = mul_add(AA,BB[1],CC[1][1]);
-                      CC[1][2] = mul_add(AA,BB[2],CC[1][2]);
+		    AA = Vec4d(A[s+1][u+q]); // load-broadcast
+		    CC[1][0] = mul_add(AA,BB[0],CC[1][0]);
+		    CC[1][1] = mul_add(AA,BB[1],CC[1][1]);
+		    CC[1][2] = mul_add(AA,BB[2],CC[1][2]);
 
-                      AA = Vec4d(A[s+ii+2][u+q]); // load-broadcast
-                      CC[2][0] = mul_add(AA,BB[0],CC[2][0]);
-                      CC[2][1] = mul_add(AA,BB[1],CC[2][1]);
-                      CC[2][2] = mul_add(AA,BB[2],CC[2][2]);
+		    AA = Vec4d(A[s+2][u+q]); // load-broadcast
+		    CC[2][0] = mul_add(AA,BB[0],CC[2][0]);
+		    CC[2][1] = mul_add(AA,BB[1],CC[2][1]);
+		    CC[2][2] = mul_add(AA,BB[2],CC[2][2]);
 
-                      AA = Vec4d(A[s+ii+3][u+q]); // load-broadcast
-                      CC[3][0] = mul_add(AA,BB[0],CC[3][0]);
-                      CC[3][1] = mul_add(AA,BB[1],CC[3][1]);
-                      CC[3][2] = mul_add(AA,BB[2],CC[3][2]);
-                    }
-                for (int p=0; p<4; ++p)
-                  {
-                    // load store amortized over M/8 matrix multiplications
-                    CC[p][0].store(&C[s+ii+p][t]); CC[p][1].store(&C[s+ii+p][t+4]); CC[p][2].store(&C[s+ii+p][t+8]);
-                  }
-              }
+		    AA = Vec4d(A[s+3][u+q]); // load-broadcast
+		    CC[3][0] = mul_add(AA,BB[0],CC[3][0]);
+		    CC[3][1] = mul_add(AA,BB[1],CC[3][1]);
+		    CC[3][2] = mul_add(AA,BB[2],CC[3][2]);
+		  }
+	      // write back C
+	      for (int p=0; p<4; ++p)
+		{
+		  // load store amortized over M/8 matrix multiplications
+		  CC[p][0].store(&C[s+p][t]); CC[p][1].store(&C[s+p][t+4]); CC[p][2].store(&C[s+p][t+8]);
+		}
+	    }
 }
 
 // package an experiment as a functor
@@ -201,9 +227,9 @@ class Experiment1 {
   int n;
 public:
   // construct an experiment
-  Experiment1 (int n_) : n(n_) {initialize(A,B,C);}
+  Experiment1 (int n_) : n(n_) {initialize(A1,B1,C1);}
   // run an experiment; can be called several times
-  void run () const {matmul1(n,A,B,C);}
+  void run () const {matmul1(n,A1,B1,C1);}
   // report number of operations
   double operations () const
   {return 2.0*n*n*n;}
@@ -214,9 +240,9 @@ class Experiment2 {
   int n;
 public:
   // construct an experiment
-  Experiment2 (int n_) : n(n_) {initialize(A,B,C);}
+  Experiment2 (int n_) : n(n_) {initialize(A1,B1,C1);}
   // run an experiment; can be called several times
-  void run () const {matmul2(n,A,B,C);}
+  void run () const {matmul2(n,A1,B1,C1);}
   // report number of operations
   double operations () const
   {return 2.0*n*n*n;}
@@ -227,9 +253,23 @@ class Experiment3 {
   int n;
 public:
   // construct an experiment
-  Experiment3 (int n_) : n(n_) {initialize(A,B,C);}
+  Experiment3 (int n_) : n(n_) {initialize(A1,B1,C1);}
   // run an experiment; can be called several times
-  void run () const {matmul3b(n,A,B,C);}
+  void run () const {matmul3(n,A1,B1,C1);}
+  // report number of operations
+  double operations () const
+  {return 2.0*n*n*n;}
+};
+
+
+// package an experiment as a functor
+class Experiment4 {
+  int n;
+public:
+  // construct an experiment
+  Experiment4 (int n_) : n(n_) {initialize(A1,B1,C1);}
+  // run an experiment; can be called several times
+  void run () const {matmul4(n,A1,B1,C1);}
   // report number of operations
   double operations () const
   {return 2.0*n*n*n;}
@@ -237,25 +277,44 @@ public:
 
 int main (int argc, char** argv)
 {
+  // test algorithms whether they produce the same result as the vanilla version
+  if (0)
+  {
+    initialize(A1,B1,C0);
+    int size = 1536;
+    matmul0(size,A1,B1,C0);
+    initialize(A1,B1,C1);
+    matmul2(size,A1,B1,C1);
+    std::cout << "matmul2 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    initialize(A1,B1,C1);
+    matmul3(size,A1,B1,C1);
+    std::cout << "matmul3 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    initialize(A1,B1,C1);
+    matmul4(size,A1,B1,C1);
+    std::cout << "matmul4 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+  }
   std::vector<int> sizes;
   for (int i=M; i<=6500; i*=2) sizes.push_back(i);
-  std::cout << "N, vanillavec, tiledvec4x4, tiledvec12x12" << std::endl;
-  //std::cout << "N, vanillavec, tiledvec4x4" << std::endl;
+  std::cout << "N, tiledvec4x4, tiledvec4x8, tiledvec4x12" << std::endl;
   for (auto i : sizes)
     { 
-      Experiment1 e1(i);
+      // Experiment1 e1(i);
       Experiment2 e2(i);
       Experiment3 e3(i);
-      auto d1 = time_experiment(e1,500000);
+      Experiment4 e4(i);
+      // auto d1 = time_experiment(e1,500000);
       auto d2 = time_experiment(e2,500000);
       auto d3 = time_experiment(e3,500000);
-      double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
+      auto d4 = time_experiment(e4,500000);
+      // double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
       double flops2 = d2.first*e2.operations()/d2.second*1e6/1e9;
       double flops3 = d3.first*e3.operations()/d3.second*1e6/1e9;
+      double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
       std::cout << i
-                << ", " << flops1
-                << ", " << flops2
-                << ", " << flops3
+                // << ", " << flops1
+		<< ", " << flops2
+		<< ", " << flops3
+                << ", " << flops4
                 << std::endl;
     }
   return 0;
