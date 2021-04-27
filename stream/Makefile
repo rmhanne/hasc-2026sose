@@ -2,7 +2,8 @@ CC = gcc-mp-10
 CFLAGS = -Ofast -fargument-noalias -march=native -ffreestanding -fopenmp
 
 FC = gfortran
-FFLAGS = -O2 -fopenmp
+#FFLAGS = -O2 -fopenmp
+FFLAGS = -O2 
 
 all: stream_f.exe stream_c.exe
 
