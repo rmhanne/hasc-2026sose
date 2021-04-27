@@ -78,6 +78,7 @@ void matmul1 (int n, double A[N][N], double B[N][N], double C[N][N])
                   AXX = Vec4d(A[i+ii][k+kk]);
                   Crow[ii] = mul_add(AXX,Brow[kk],Crow[ii]);
                 }
+	    // compute intensity of inner loop w.r.t. register loads: 128 flops / 256 bytes loaded = 0.5
           }
         Crow[0].store(&C[i][j]);
         Crow[1].store(&C[i+1][j]);
@@ -212,6 +213,8 @@ void matmul4 (int n, double A[N][N], double B[N][N], double C[N][N])
 		    CC[3][0] = mul_add(AA,BB[0],CC[3][0]);
 		    CC[3][1] = mul_add(AA,BB[1],CC[3][1]);
 		    CC[3][2] = mul_add(AA,BB[2],CC[3][2]);
+
+		    // compute intensity of inner loop w.r.t. register loads: 96 flops/128 bytes = 0.75
 		  }
 	      // write back C
 	      for (int p=0; p<4; ++p)
@@ -219,6 +222,59 @@ void matmul4 (int n, double A[N][N], double B[N][N], double C[N][N])
 		  // load store amortized over M/8 matrix multiplications
 		  CC[p][0].store(&C[s+p][t]); CC[p][1].store(&C[s+p][t+4]); CC[p][2].store(&C[s+p][t+8]);
 		}
+	    }
+}
+
+
+// tiling and SIMD with vectorization of products of IxK and KxJ*4 matrices
+template<int I, int J, int K>
+void matmul5 (int n, double A[N][N], double B[N][N], double C[N][N])
+{
+  // check size
+  if (n>N) {std::cout << "matrix too large " << n << " > " << N << std::endl; exit(1);}
+
+  // check divisibilities
+  if (n%M!=0) {std::cout << "matrix size and tile size " << n << " is not a multiple of " << M << std::endl; exit(1);}
+  if (M%I!=0) {std::cout << "tile size and I blocks " << M << " is not a multiple of " << I << std::endl; exit(1);}
+  if (M%K!=0) {std::cout << "tile size and K blocks " << M << " is not a multiple of " << K << std::endl; exit(1);}
+  if (M%(J*4)!=0) {std::cout << "tile size and J blocks " << M << " is not a multiple of " << J*4 << std::endl; exit(1);}
+
+  // check number of registers needed
+  int registers = I*J + J + 1;
+  if (registers>16)  {std::cout << "too many registers: " << registers << " is greater than 16" << std::endl; exit(1);}
+
+  // data in registers
+  Vec4d CC[I][J], BB[J], AA;
+
+  // loop over tiles of size MxM
+  for (int i=0; i<n; i+=M)
+    for (int j=0; j<n; j+=M)
+      for (int k=0; k<n; k+=M)
+	// update subblock C_ij += A_ik*B_kj
+        for (int s=i; s<i+M; s+=I)
+          for (int t=j; t<j+M; t+=J*4)
+	    {
+	      // C_st is a IxJ*4 subblock of C_ij
+	      for (int p=0; p<I; ++p)
+		for (int q=0; q<J; ++q)
+		  CC[p][q].load(&C[s+p][t+q*4]);
+	      for (int u=k; u<k+M; u+=K)
+		// C_st += A_su*B_ut where now A_su is IxK and B_ut is KxJ*4
+		for (int r=0; r<K; r+=1) // columns of A / rows of B
+		  {
+		    for (int q=0; q<J; ++q)
+		      BB[q].load(&B[u+r][t+q*4]);
+		    for (int p=0; p<I; ++p)
+		      {
+			AA = Vec4d(A[s+p][u+r]); // load-broadcast
+			for (int q=0; q<J; ++q)
+			  CC[p][q] = mul_add(AA,BB[q],CC[p][q]);
+		      }
+		  }
+	      // write back C
+	      for (int p=0; p<I; ++p)
+		for (int q=0; q<J; ++q)
+		  CC[p][q].store(&C[s+p][t+q*4]);
 	    }
 }
 
@@ -275,46 +331,66 @@ public:
   {return 2.0*n*n*n;}
 };
 
+// package an experiment as a functor
+template<int I, int J, int K>
+class Experiment5 {
+  int n;
+public:
+  // construct an experiment
+  Experiment5 (int n_) : n(n_) {initialize(A1,B1,C1);}
+  // run an experiment; can be called several times
+  void run () const {matmul5<I,J,K>(n,A1,B1,C1);}
+  // report number of operations
+  double operations () const
+  {return 2.0*n*n*n;}
+};
+
 int main (int argc, char** argv)
 {
   // test algorithms whether they produce the same result as the vanilla version
   if (0)
   {
     initialize(A1,B1,C0);
-    int size = 1536;
+    int size = 10*M;
     matmul0(size,A1,B1,C0);
     initialize(A1,B1,C1);
-    matmul2(size,A1,B1,C1);
-    std::cout << "matmul2 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
-    initialize(A1,B1,C1);
-    matmul3(size,A1,B1,C1);
-    std::cout << "matmul3 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
-    initialize(A1,B1,C1);
-    matmul4(size,A1,B1,C1);
-    std::cout << "matmul4 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    // matmul2(size,A1,B1,C1);
+    // std::cout << "matmul2 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    // initialize(A1,B1,C1);
+    // matmul3(size,A1,B1,C1);
+    // std::cout << "matmul3 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    // initialize(A1,B1,C1);
+    // matmul4(size,A1,B1,C1);
+    // std::cout << "matmul4 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
+    matmul5<6,2,24>(size,A1,B1,C1);
+    std::cout << "matmul5 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
   }
   std::vector<int> sizes;
   for (int i=M; i<=6500; i*=2) sizes.push_back(i);
-  std::cout << "N, tiledvec4x4, tiledvec4x8, tiledvec4x12" << std::endl;
+  std::cout << "N, tiledvecIxJ_new" << std::endl;
   for (auto i : sizes)
     { 
       // Experiment1 e1(i);
-      Experiment2 e2(i);
-      Experiment3 e3(i);
-      Experiment4 e4(i);
+      // Experiment2 e2(i);
+      // Experiment3 e3(i);
+      // Experiment4 e4(i);
+      Experiment5<6,2,24> e5(i);
       // auto d1 = time_experiment(e1,500000);
-      auto d2 = time_experiment(e2,500000);
-      auto d3 = time_experiment(e3,500000);
-      auto d4 = time_experiment(e4,500000);
+      // auto d2 = time_experiment(e2,500000);
+      // auto d3 = time_experiment(e3,500000);
+      // auto d4 = time_experiment(e4,500000);
+      auto d5 = time_experiment(e5,500000);
       // double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
-      double flops2 = d2.first*e2.operations()/d2.second*1e6/1e9;
-      double flops3 = d3.first*e3.operations()/d3.second*1e6/1e9;
-      double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
+      // double flops2 = d2.first*e2.operations()/d2.second*1e6/1e9;
+      // double flops3 = d3.first*e3.operations()/d3.second*1e6/1e9;
+      // double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
+      double flops5 = d5.first*e5.operations()/d5.second*1e6/1e9;
       std::cout << i
                 // << ", " << flops1
-		<< ", " << flops2
-		<< ", " << flops3
-                << ", " << flops4
+		// << ", " << flops2
+		// << ", " << flops3
+                // << ", " << flops4
+                << ", " << flops5
                 << std::endl;
     }
   return 0;
