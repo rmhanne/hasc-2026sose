@@ -2,12 +2,17 @@ cmake_minimum_required (VERSION 3.12)
 project(hasc)
 
 add_compile_options(
+       # gcc compiler flags
        # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fno-strict-aliasing
        -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fno-trapping-math -fno-math-errno -fargument-noalias
        #
+       # clang compiler flags
+       # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fno-trapping-math -fno-math-errno
+       #
+       # icc compiler flags
+       # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fno-trapping-math -fno-math-errno -fargument-noalias
        # Optimized build with debug statements -> useful for performance investigation with intel-advisor
        # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fno-trapping-math -fno-math-errno -fargument-noalias -g
-       # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fno-trapping-math -fno-math-errno -fargument-noalias -g
 )
 add_compile_definitions(
         NDEBUG
