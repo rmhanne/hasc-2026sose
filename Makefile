@@ -8,7 +8,6 @@ CC = g++-mp-9
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -fno-math-errno -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
 CCFLAGS = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fno-math-errno -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-//CCFLAGS = -std=c++17 -O3 -fno-trapping-math -fno-math-errno -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
 # linker flags without GMP stuff
 LFLAGS = -lm
@@ -25,7 +24,8 @@ all: scalar_product_v1\
      pointer_chasing\
      transpose_v1\
      matvec_v1 \
-     matvec_v2
+     matvec_v2 \
+     nbody_vanilla
 
 scalar_product_v0: scalar_product_v0.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
@@ -51,6 +51,8 @@ matvec_v1: matvec_v1.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matvec_v2: matvec_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+nbody_vanilla: nbody_vanilla.cc Makefile nbody_generate.hh nbody_io.hh
+	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 
 clean:
 	rm -f *.o \
@@ -65,4 +67,5 @@ clean:
         pointer_chasing \
         transpose_v1\
 	matvec_v1\
-	matvec_v2
+	matvec_v2\
+	nbody_vanilla
