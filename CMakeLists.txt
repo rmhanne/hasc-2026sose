@@ -80,6 +80,11 @@ endif (TARGET Eigen3::Eigen)
 add_executable(matvec_v1 matvec_v1.cc)
 
 add_executable(matvec_v2 matvec_v2.cc)
+# =============
+# Nbody Example
+# =============
+
+add_executable(nbody_vanilla nbody_vanilla.cc)
 
 add_executable(transpose_v1 transpose_v1.cc)
 
