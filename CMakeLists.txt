@@ -1,6 +1,29 @@
 cmake_minimum_required (VERSION 3.12)
 project(hasc)
 
+
+# It seems as if there is no official find_package for the MKL library. There
+# have been some uswer written scripts but apparently most of them are outdated.
+# Intel itself doesn't seem to be active about doing anything. So I can't
+# properly guard the matmul_libraries target.
+#
+# This means: Make sure you have intel-mkl installed and that all the paths are
+# set properly. If you installed intel using their installer it should have
+# pointed you to a `setvars.sh` script. Call this in the shell where you want to
+# buil the executable and it should be able to find mkl. In my case this is:
+#
+# . ~/intel/oneapi/setvars.sh
+#
+# As a work around we use an option. You can set the option to `ON` if you have
+# intel-mkl installed and want to build the targets. Note: You can also call cmake with
+#
+# cmake -DHASC_HAVE_MKL /path/to/source/dir
+#
+# You might need to remove the CMake cache before.
+
+option(HASC_HAVE_MKL "Intel-mkl is installed and all path variables are set so it can be found. Work around not having a find_package(MKL)." OFF)
+
+
 add_compile_options(
        # gcc compiler flags
        # -Wall -std=c++17 -O3 -march=native -funroll-loops -ffast-math -fopt-info-vec -fno-strict-aliasing
@@ -52,36 +75,35 @@ add_executable(matmul_seq_v1 matmul_seq_v1.cc)
 
 add_executable(matmul_seq_v2 matmul_seq_v2.cc)
 
-
-# It seems as if there is no official find_package for the MKL library. There
-# have been some uswer written scripts but apparently most of them are outdated.
-# Intel itself doesn't seem to be active about doing anything. So I can't
-# properly guard the matmul_libraries target.
-#
-# This means: Make sure you have intel-mkl installed and that all the paths are
-# set properly. If you installed intel using their installer it should have
-# pointed you to a `setvars.sh` script. Call this in the shell where you want to
-# buil the executable and it should be able to find mkl. In my case this is:
-#
-# . ~/intel/oneapi/setvars.sh
-#
-# find_package (MKL)
-# if (TARGET MKL)
-
-find_package (Eigen3 3.3 NO_MODULE)
-if (TARGET Eigen3::Eigen)
-  add_executable(matmul_libraries matmul_libraries.cc)
-  target_link_libraries (matmul_libraries Eigen3::Eigen)
-  target_link_libraries(matmul_libraries mkl_intel_lp64 mkl_sequential mkl_core)
-endif (TARGET Eigen3::Eigen)
-
-# endif (TARGET MKL)
-
 add_executable(matvec_v1 matvec_v1.cc)
 
 add_executable(matvec_v2 matvec_v2.cc)
 
 add_executable(transpose_v1 transpose_v1.cc)
+
+add_executable(transpose_vectorized transpose_vectorized.cc)
+
+
+if (HASC_HAVE_MKL)
+find_package (Eigen3 3.3 NO_MODULE)
+if (TARGET Eigen3::Eigen)
+  add_executable(matmul_libraries matmul_libraries.cc)
+  target_link_libraries (matmul_libraries Eigen3::Eigen)
+  target_link_libraries(matmul_libraries mkl_intel_lp64 mkl_sequential mkl_core)
+
+  add_executable(transpose_libraries transpose_libraries.cc)
+  target_link_libraries (transpose_libraries Eigen3::Eigen)
+  target_link_libraries(transpose_libraries mkl_intel_lp64 mkl_sequential mkl_core)
+endif (TARGET Eigen3::Eigen)
+endif (HASC_HAVE_MKL)
+
+
+# =============
+# Nbody Example
+# =============
+
+add_executable(nbody_vanilla nbody_vanilla.cc)
+
 
 # ==============
 # Other examples

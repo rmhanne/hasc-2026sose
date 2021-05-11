@@ -143,8 +143,8 @@ public:
   Experiment1 (int n_) : n(n_)
   {
     std::cout << "Exp1: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
@@ -177,8 +177,8 @@ public:
   Experiment2 (int n_) : n(n_)
   {
     std::cout << "Exp2: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
@@ -212,8 +212,8 @@ public:
   Experiment3 (int n_) : n(n_)
   {
     std::cout << "Exp3: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
@@ -247,8 +247,8 @@ public:
   Experiment4 (int n_) : n(n_)
   {
     std::cout << "Exp4: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
@@ -282,8 +282,8 @@ public:
   Experiment5 (int n_, int b_) : n(n_), b(b_)
   {
     std::cout << "Exp5: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
@@ -317,8 +317,8 @@ public:
   Experiment6 (int n_, int b_) : n(n_), b(b_)
   {
     std::cout << "Exp6: " << n << std::endl;
-    A = new double [n*n];
-    B = new double [n*n];
+    A = new(std::align_val_t{64}) double [n*n];
+    B = new(std::align_val_t{64}) double [n*n];
     initialize(n,A);
     initialize(n,B);
     if (((size_t)A)%64!=0) {
