@@ -130,3 +130,6 @@ target_link_libraries(packaged_task Threads::Threads)
 
 add_executable(producer_consumer producer_consumer.cc)
 target_link_libraries(producer_consumer Threads::Threads)
+
+add_executable(power_method power_method.cc)
+target_link_libraries(power_method Threads::Threads)

@@ -60,8 +60,8 @@ void copy_scale (int n, double a, const double* x, double* y)
 // sequential version of power method
 double lambda_max (int n, const double* A)
 {
-  double* x = new double [n];
-  double* y = new double [n];
+  double* x = new (std::align_val_t {64}) double [n];
+  double* y = new (std::align_val_t {64}) double [n];
 
   // prepare initial vector
   for (int i=0; i<n; i++) x[i] = rand();
@@ -166,9 +166,9 @@ double lambda_max_par (int P, int n, const double* A)
   // prepare input data
   context->n = n;
   context->A = A;
-  context->x = new double [n];
+  context->x = new (std::align_val_t {64}) double [n];
   std::cout << "x aligned to " << alignment(context->x) << std::endl;
-  context->y = new double [n];
+  context->y = new (std::align_val_t {64}) double [n];
   std::cout << "y aligned to " << alignment(context->y) << std::endl;
 
   // prepare initial vector
@@ -216,7 +216,7 @@ int main (int argc, char** argv)
   std::cout << "power_method: n=" << n << " P=" << P << std::endl;
 
   int w=10;
-  double* A = new double [n*n];
+  double* A = new (std::align_val_t{64}) double [n*n];
   std::cout << "A aligned to " << alignment(A) << std::endl;
   for (int i=0; i<n; i++)
     for (int j=0; j<n; j++)
