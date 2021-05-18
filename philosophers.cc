@@ -17,6 +17,7 @@ std::vector<std::condition_variable> cv(N); // for waiting
 std::mutex mx; // mutex for protecting states
 std::mutex px; // mutex for protecting cout
 
+// naive "solution" that might result in deadlock
 void philosopher1 (int i)
 {
   int l=(i+1)%N; // right fork number
@@ -29,6 +30,22 @@ void philosopher1 (int i)
       // eat
       forks[l].unlock();
       forks[r].unlock();      
+    }
+  std::lock_guard<std::mutex> lg{px};
+  std::cout << "Philosopher " << i << " finished" << std::endl;
+}
+
+// C++-11 solution with trylock
+void philosopher1b (int i)
+{
+  int l=(i+1)%N; // right fork number
+  int r=i; // left fork number
+  for (int j=0; j<cycles; j++)
+    {
+      // think
+      std::lock(forks[l],forks[r]);
+      // eat
+      forks[l].unlock(); forks[r].unlock();      
     }
   std::lock_guard<std::mutex> lg{px};
   std::cout << "Philosopher " << i << " finished" << std::endl;
@@ -49,8 +66,6 @@ void test (int i, int j)
 
 void philosopher2 (int i)
 {
-  int l=(i+1)%N; // right fork number
-  int r=i; // left fork number
   for (int j=0; j<cycles; j++)
     {
       // think

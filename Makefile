@@ -1,14 +1,14 @@
 # define your compiler
-CC = g++-mp-9
+#CC = g++-mp-9
 # CC = g++-8
-# CC = g++-10
+CC = g++-mp-10
 
 # compilation flags without GMP stuff
 # no vectorization
 #CCFLAGS = -O0
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -fno-math-errno -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
-CCFLAGS = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fno-math-errno -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fno-math-errno -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
 # linker flags without GMP stuff
 LFLAGS = -lm
