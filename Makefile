@@ -6,13 +6,16 @@ CC = g++-mp-10
 # compilation flags without GMP stuff
 # no vectorization
 #CCFLAGS = -O0
-#CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -fno-math-errno -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+#CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
-CCFLAGS = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fno-math-errno -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_NOVEC = -std=c++20 -O3 -ffast-math -fargument-noalias
+CCFLAGS = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_OMP = -fopenmp -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
 # linker flags without GMP stuff
-LFLAGS = -lm
-# LFLAGS = -lm -pthread # In case you need to link against pthread
+LFLAGS = -lm -lpthread
+LFLAGS_OMP = -lm -lpthread
+
 
 all: scalar_product_v1\
      scalar_product_v0\
@@ -22,6 +25,7 @@ all: scalar_product_v1\
      scalar_product_v5\
      matmul_seq_v1\
      matmul_seq_v2\
+     matmul_omp\
      pointer_chasing\
      transpose_v1\
      matvec_v1 \
@@ -34,7 +38,10 @@ all: scalar_product_v1\
      producer_consumer\
      nbody_vanilla\
      nbody_vectorized\
-     nbody_vectorized_threaded
+     nbody_omp\
+     nbody_vectorized_threaded\
+     jacobi_seq\
+     hello_openmp
 
 scalar_product_v0: scalar_product_v0.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
@@ -52,6 +59,8 @@ matmul_seq_v1: matmul_seq_v1.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_seq_v2: matmul_seq_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+matmul_omp: matmul_omp.cc Makefile
+	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 transpose_v1: transpose_v1.cc Makefile
@@ -66,6 +75,8 @@ nbody_vectorized: nbody_vectorized.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+nbody_omp: nbody_omp.cc Makefile nbody_generate.hh nbody_io.hh
+	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
 peterson: peterson.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 philosophers: philosophers.cc Makefile
@@ -78,6 +89,10 @@ packaged_task: packaged_task.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 producer_consumer: producer_consumer.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+jacobi_seq: jacobi_seq.cc Makefile
+	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+hello_openmp: hello_openmp.cc Makefile
+	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
 
 clean:
 	rm -f *.o \
@@ -89,6 +104,7 @@ clean:
         scalar_product_v5 \
         matmul_seq_v1 \
         matmul_seq_v2 \
+        matmul_omp \
         pointer_chasing \
         transpose_v1 \
 	matvec_v1 \
@@ -101,4 +117,7 @@ clean:
 	producer_consumer \
 	nbody_vanilla \
 	nbody_vectorized \
-	nbody_vectorized_threaded
+	nbody_omp \
+	nbody_vectorized_threaded \
+	jacobi_seq \
+	hello_openmp
