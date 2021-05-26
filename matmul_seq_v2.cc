@@ -367,29 +367,29 @@ int main (int argc, char** argv)
   }
   std::vector<int> sizes;
   for (int i=M; i<=6500; i*=2) sizes.push_back(i);
-  std::cout << "N, tiledvecIxJ_new" << std::endl;
+  std::cout << "N, Exp4, Exp5_6_2_24" << std::endl;
   for (auto i : sizes)
     { 
       // Experiment1 e1(i);
       // Experiment2 e2(i);
       // Experiment3 e3(i);
-      // Experiment4 e4(i);
+      Experiment4 e4(i);
       Experiment5<6,2,24> e5(i);
       // auto d1 = time_experiment(e1,500000);
       // auto d2 = time_experiment(e2,500000);
       // auto d3 = time_experiment(e3,500000);
-      // auto d4 = time_experiment(e4,500000);
+      auto d4 = time_experiment(e4,500000);
       auto d5 = time_experiment(e5,500000);
       // double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
       // double flops2 = d2.first*e2.operations()/d2.second*1e6/1e9;
       // double flops3 = d3.first*e3.operations()/d3.second*1e6/1e9;
-      // double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
+      double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
       double flops5 = d5.first*e5.operations()/d5.second*1e6/1e9;
       std::cout << i
                 // << ", " << flops1
 		// << ", " << flops2
 		// << ", " << flops3
-                // << ", " << flops4
+                << ", " << flops4
                 << ", " << flops5
                 << std::endl;
     }
