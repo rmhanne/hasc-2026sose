@@ -8,6 +8,10 @@
 #include "nbody_generate.hh"
 #include "time_experiment.hh"
 
+#ifndef __GNUC__
+#define __restrict__
+#endif
+
 // basic data type for position, velocity, acceleration
 typedef double double3[4]; // pad up for later use with SIMD
 
@@ -20,7 +24,7 @@ const double epsilon2 = 1E-10;
  * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
  * flops including 1 division and one square root
  */
-void acceleration (int n, double3 x[], double m[], double3 a[])
+void acceleration (int n, double3* __restrict__ x, double* __restrict__ m, double3* __restrict__ a)
 {
   for (int i=0; i<n; i++)
     for (int j=i+1; j<n; j++)
@@ -46,7 +50,7 @@ void acceleration (int n, double3 x[], double m[], double3 a[])
  *
  * does n*(n-1)*13 + 12n flops
  */
-void leapfrog (int n, double dt, double3 x[], double3 v[], double m[], double3 a[])
+void leapfrog (int n, double dt, double3* __restrict__ x, double3* __restrict__ v, double* __restrict__ m, double3* __restrict__ a)
 {
   // update position: 6n flops
   for (int i=0; i<n; i++)
