@@ -19,10 +19,15 @@ class MessageSystem {
   // mailbox part
   struct Envelope {
     int sender; // origin of the message
+    int receiver; // destination of the message
     bool read; // set to true by receiver to notify sender
     std::mutex mx; // for the condition variable
     std::condition_variable cv; // for the sender to wait
-    Envelope(int _sender) : sender(_sender), read(false)
+    Envelope(int _sender) // used for msg list
+      : sender(_sender), receiver(-1), read(false)
+    {}
+    Envelope(int _sender, int _receiver) // used for arecv
+      : sender(_sender), receiver(_receiver), read(false)
     {}
     virtual void dummy (void) // enables RTTI
     {}
@@ -30,15 +35,21 @@ class MessageSystem {
   template<class T>
   struct TypedEnvelope : public Envelope {
     const T* data;
+    T* data_recv;
     TypedEnvelope(int _sender, const T* _data)
       : Envelope(_sender), data(_data)
+    {}
+    TypedEnvelope(int _sender, int _receiver, T* _data)
+      : Envelope(_sender,_receiver), data_recv(_data)
     {}
     virtual void dummy (void)
     {}
   };
 
   // one message queue for each thread to receive
-  std::vector<std::list<Envelope*>> messages;
+  using EnvelopeSharedPtr = std::shared_ptr<Envelope>; // internal use
+  using MessageID = EnvelopeSharedPtr; // external use
+  std::vector<std::list<EnvelopeSharedPtr>> messages;
   // locks to protect the queues
   std::vector<std::mutex> locks;
   // condition variables to wait for a message ariving
@@ -83,20 +94,21 @@ public:
       }
     
     // make envelope
-    MessageSystem::TypedEnvelope<T> env(me,&data);
+    using TEnvelope = TypedEnvelope<T>;
+    EnvelopeSharedPtr penv(new TEnvelope(me,&data));
     
     // put envelope in message list of receiving thread
     locks[to_rank].lock();
-    messages[to_rank].push_back(&env); // append element at the end
+    messages[to_rank].push_back(penv); // append element at the end
     locks[to_rank].unlock();
         
     // notify receiving thread that new message has arrived
     cvs[to_rank].notify_one();
 
     // block on the envelopes flag until message has been read
-    std::unique_lock<std::mutex> ul{env.mx};
-    env.cv.wait(ul,[&]{return env.read;});
-    // pointer to envelope has been removed from list by receiver
+    std::unique_lock<std::mutex> ul{penv->mx};
+    penv->cv.wait(ul,[&]{return penv->read;});
+    // shared_ptr to envelope has been removed from list by receiver
     // so we can destroy the envelope now
   }
 
@@ -105,7 +117,6 @@ public:
   void recv (int from_rank, T& data)
   {
     int me = myrank[std::this_thread::get_id()];
-    // std::cout << me << ": recv from " << from_rank << std::endl;
 
     // check if try to receive message from myself
     if (me==from_rank)
@@ -128,29 +139,29 @@ public:
 
 	// we have the lock and the message;
 	// find first entry in list from sender
-	auto listelement = messages[me].end();
+	auto it = messages[me].end();
 	for (auto iter=messages[me].begin(); iter!=messages[me].end(); ++iter)
 	  if ((**iter).sender==from_rank)
 	    {
-	      listelement = iter;
+	      it = iter;
 	      break;
 	    }
 	// now really receive the message; still in the lock
-	if (listelement!=messages[me].end())
+	if (it!=messages[me].end())
 	  {
 	    // type safe downcast of Envelope* to TypedEnvelope<T>*
-	    TypedEnvelope<T>* p = dynamic_cast<TypedEnvelope<T>*>(*listelement); 
+	    TypedEnvelope<T>* p = dynamic_cast<TypedEnvelope<T>*>(it->get()); 
 	    if (p!=0)
 	      data = *(p->data); // now thats the copy using an assignement operator
 	    else
 	      std::cout << "type mismatch in recv" << std::endl;
 	    // signal to sender that message hes been received
-	    std::unique_lock<std::mutex> ulp{p->mx};
-	    p->read = true;
-	    p->cv.notify_one();
+	    std::unique_lock<std::mutex> ulp{(**it).mx};
+	    (**it).read = true;
+	    (**it).cv.notify_one();
 	    ulp.unlock();
 	    // erase the element from the list; we still haave the lock ul!
-	    messages[me].erase(listelement);
+	    messages[me].erase(it);
 	    // and leave while loop
 	    break; // releases the lock ul as well!
 	  }
@@ -175,13 +186,13 @@ public:
 
 	// we have the lock and the message;
 	// get first entry in the list
-	auto listelement = messages[me].begin();
+	auto it = messages[me].begin();
 
 	// now really receive the message; still in the lock
-	if (listelement!=messages[me].end())
+	if (it!=messages[me].end())
 	  {
 	    // type safe downcast of Envelope* to TypedEnvelope<T>*
-	    TypedEnvelope<T>* p = dynamic_cast<TypedEnvelope<T>*>(*listelement); 
+	    TypedEnvelope<T>* p = dynamic_cast<TypedEnvelope<T>*>(it->get()); 
 	    if (p!=0)
 	      {
 		from_rank = p->sender; // get the sender
@@ -190,10 +201,12 @@ public:
 	    else
 	      std::cout << "type mismatch in recv" << std::endl;
 	    // signal to sender that message has been received
-	    (**listelement).read = true;
-	    (**listelement).cv.notify_one();
+	    std::unique_lock<std::mutex> ulp{(**it).mx};
+	    (**it).read = true;
+	    (**it).cv.notify_one();
+	    ulp.unlock();
 	    // erase the element from the list
-	    messages[me].erase(listelement);
+	    messages[me].erase(it);
 	    // and leave while loop
 	    break; // releases the lock as well!
 	  }
@@ -220,6 +233,101 @@ public:
       if ((**iter).sender==from_rank)
 	return true;
     return false;
+  }
+
+  // nonblocking typesafe send
+  template<typename T>
+  MessageID asend (int to_rank, const T& data)
+  {
+    int me = myrank[std::this_thread::get_id()];
+    
+    // check if message goes to itself
+    if (me==to_rank)
+      {
+	std::cout << "thread " << to_rank << " sends message to itself" << std::endl;
+      }
+    
+    // make envelope which is also the message id
+    using TEnvelope = TypedEnvelope<T>;
+    EnvelopeSharedPtr penv(new TEnvelope(me,&data));
+    
+    // put envelope in message list of receiving thread
+    locks[to_rank].lock();
+    messages[to_rank].push_back(penv); // append element at the end
+    locks[to_rank].unlock();
+        
+    // notify receiving thread that new message has arrived
+    cvs[to_rank].notify_one();
+
+    return penv;
+  }
+
+  // test whether message has been transfered
+  template<typename T>
+  bool test (MessageID& msg)
+  {
+    if (msg->receiver==-1)
+      {
+	// test if asend succeeded
+	std::lock_guard<std::mutex> lg{msg->mx};
+	return msg->read;
+      }
+    else
+      {
+	// test if arecv succeeded
+	int me = myrank[std::this_thread::get_id()];
+
+	// grab lock protecting message list
+	std::unique_lock<std::mutex> ul{locks[me]};
+	
+	// sscan the list to see if message arrived
+	auto it = messages[me].end();
+	for (auto iter=messages[me].begin(); iter!=messages[me].end(); ++iter)
+	  if ((**iter).sender==msg->sender)
+	    {
+	      it = iter;
+	      break;
+	    }
+	// return if message did not arrive yet
+	if (it==messages[me].end()) return false;
+
+	// now really receive the message; still in the lock
+	// type safe downcast of Envelope* to TypedEnvelope<T>*
+	TypedEnvelope<T>* psend = dynamic_cast<TypedEnvelope<T>*>(it->get());
+	TypedEnvelope<T>* precv = dynamic_cast<TypedEnvelope<T>*>(msg.get());
+	if (psend!=0 && precv!=0)
+	  *(precv->data_recv) = *(psend->data); // now thats the copy using an assignement operator
+	else
+	  std::cout << "type mismatch in recv" << std::endl;
+	// signal to sender that message hes been received
+	// this would even work with a blocking send!
+	std::unique_lock<std::mutex> ulp{(**it).mx};
+	(**it).read = true;
+	(**it).cv.notify_one();
+	ulp.unlock();
+	// erase the element from the list; we still haave the lock ul!
+	messages[me].erase(it);
+	return true;
+      }
+  }
+
+  // nonblocking receive
+  template<typename T>
+  MessageID arecv (int from_rank, T& data)
+  {
+    int to_me = myrank[std::this_thread::get_id()];
+
+    // check if try to receive message from myself
+    if (to_me==from_rank)
+      {
+	std::cout << "thread " << from_rank << " tries to receive message from itself" << std::endl;
+      }
+
+    // make receiver envelope which is also the message id
+    using TEnvelope = TypedEnvelope<T>;
+    EnvelopeSharedPtr penv(new TEnvelope(from_rank,to_me,&data));
+
+    return penv;
   }
 };
 
@@ -274,6 +382,27 @@ bool rprobe (int from_rank)
 void barrier ()
 {
   return ms->barrier();
+}
+
+// nonblocking send
+template<typename T>
+MessageSystem::MessageID asend (int to_rank, const T& data)
+{
+  return ms->asend(to_rank,data);
+}
+
+// nonblocking receive
+template<typename T>
+MessageSystem::MessageID arecv (int from_rank, T& data)
+{
+  return ms->arecv(from_rank,data);
+}
+
+// nonblocking test
+template<typename T>
+bool test (MessageSystem::MessageID& msg)
+{
+  return ms->test<T>(msg);
 }
 
 #endif
