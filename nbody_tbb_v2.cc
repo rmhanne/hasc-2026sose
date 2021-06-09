@@ -3,6 +3,8 @@
 #include <math.h>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <array>
 
 #include <oneapi/tbb.h>
 #include "vcl/vectorclass.h"
