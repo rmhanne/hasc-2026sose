@@ -12,7 +12,7 @@
 const int P = 24;   // basic block size is a multiple of 4, 8 and 12
 const int Q = 4;    // multiplier
 const int M = P*Q;  // tile size
-const int N = P*256;// maximum problem size; 
+const int N = M*64;// maximum problem size; 
 double A1[N][N] __attribute__((aligned(64))); // input matrix 1
 double B1[N][N] __attribute__((aligned(64))); // input matrix 2
 double C1[N][N] __attribute__((aligned(64))); // output matrix 1
@@ -163,20 +163,23 @@ int main (int argc, char** argv)
     std::cout << "matmul4 N=" << size << " diff=" << compare(size,C0,C1) << std::endl;
   }
   int P=omp_get_max_threads();
-  
+
+  std::cout << "memory for 3 matrices in GByte: " << 3.0*N*N*8/1024/1024/1024 << std::endl;
+
   std::vector<int> sizes;
-  for (int i=M; i<=6500; i*=2) sizes.push_back(i);
-  std::cout << "N, autovec_tiled P=" << P << ", vectorized_tiled P=" << P << std::endl;
+  for (int i=M; i<=N; i*=2) sizes.push_back(i);
+  //std::cout << "N, autovec_tiled P=" << P << ", vectorized_tiled P=" << P << std::endl;
+  std::cout << "N, vectorized_tiled P=" << P << std::endl;
   for (auto i : sizes)
     { 
-      Experiment1 e1(i);
+//      Experiment1 e1(i);
       Experiment4 e4(i);
-      auto d1 = time_experiment(e1,500000);
+//      auto d1 = time_experiment(e1,500000);
       auto d4 = time_experiment(e4,500000);
-      double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
+//      double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
       double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
       std::cout << i
-		<< ", " << flops1
+//		<< ", " << flops1
                 << ", " << flops4
                 << std::endl;
     }

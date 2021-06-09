@@ -12,7 +12,7 @@
 const int P = 12;   // basic block size is a multiple of 4, 8 and 12
 const int Q = 8;    // multiplier=SIMD width
 const int M = P*Q;  // tile size
-const int N = P*128;// maximum problem size; 
+const int N = M*64;// maximum problem size; 
 double A1[N][N] __attribute__((aligned(64))); // input matrix 1
 double B1[N][N] __attribute__((aligned(64))); // input matrix 2
 double C1[N][N] __attribute__((aligned(64))); // output matrix 1
@@ -72,15 +72,33 @@ void matmul1 (int n, double A[N][N], double B[N][N], double C[N][N])
 void matmul4 (int n, double A[N][N], double B[N][N], double C[N][N])
 {
   Vec8d CC[4][3], BB[3], AA; // fits exactly 16 registers
-  
+ 
+  if (Q!=8) {
+     std::cout << "SIMD Width must be 8" << std::endl;
+     return;
+  } 
+  if (M%Q!=0) {
+     std::cout << "M must be a multiple of Q" << std::endl;
+     return;
+  } 
+  if (M%(3*Q)!=0) {
+     std::cout << "M must be a multiple of 3*Q" << std::endl;
+     return;
+  } 
+  if (n%M!=0) {
+     std::cout << "n must be a multiple of M" << std::endl;
+     return;
+  } 
 #pragma omp parallel for schedule (static) firstprivate(n,A,B,C) private(CC,BB,AA) collapse (2)
   for (int i=0; i<n; i+=M) // loop over tiles
     for (int j=0; j<n; j+=M)
       for (int k=0; k<n; k+=M)
-        for (int s=i; s<i+M; s+=4) // loop over 4x12 blocks of C within the tiles
+	// C_ij += A_ik*B_kj where all blocks are MxM
+	// now C_ij is again blocked int 4x(3Q) blocks
+        for (int s=i; s<i+M; s+=4) // loop over 4x24 blocks of C within the tiles
           for (int t=j; t<j+M; t+=3*Q)
 	    {
-	      // C_st is a 4x24 block which is loaded now
+	      // C_st is a 4x24 block in 12 SIMD registers which is loaded now
 	      for (int p=0; p<4; ++p)
 		{
 		  // load store amortized over M/8 matrix multiplications
@@ -163,18 +181,19 @@ int main (int argc, char** argv)
   int P=omp_get_max_threads();
   
   std::vector<int> sizes;
-  for (int i=M; i<=6500; i*=2) sizes.push_back(i);
-  std::cout << "N, autovec_tiled P=" << P << ", vectorized_tiled P=" << P << std::endl;
+  for (int i=M; i<=N; i*=2) sizes.push_back(i);
+  //std::cout << "N, autovec_tiled P=" << P << ", vectorized_tiled P=" << P << std::endl;
+  std::cout << "N, vectorized_tiled P=" << P << std::endl;
   for (auto i : sizes)
     { 
-      Experiment1 e1(i);
+//      Experiment1 e1(i);
       Experiment4 e4(i);
-      auto d1 = time_experiment(e1,500000);
+//      auto d1 = time_experiment(e1,500000);
       auto d4 = time_experiment(e4,500000);
-      double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
+//      double flops1 = d1.first*e1.operations()/d1.second*1e6/1e9;
       double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
       std::cout << i
-		<< ", " << flops1
+//		<< ", " << flops1
                 << ", " << flops4
                 << std::endl;
     }

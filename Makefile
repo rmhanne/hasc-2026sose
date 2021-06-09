@@ -1,21 +1,21 @@
 # define your compiler
 #CC = g++-mp-9
 # CC = g++-8
-CC = g++-mp-10
-CCMPI = mpicxx-openmpi-gcc10
-CCTBB = g++-mp-10
+CC = g++
+CCMPI = mpicxx
+CCTBB = g++
 
 # compilation flags without GMP stuff
 # no vectorization
 #CCFLAGS = -O0
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
-CCFLAGS_NOVEC = -std=c++20 -O3 -funroll-loops -ffast-math -fargument-noalias
-CCFLAGS = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-CCFLAGS_OMP = -fopenmp -std=c++20 -O3 -ftree-vectorize -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-CCFLAGS_OMP_AVX512 = -fopenmp -std=c++20 -O3 -ftree-vectorize -mfma -mavx512f -mavx512cd -ffast-math -march=skylake-avx512 -flto -fno-trapping-math -fabi-version=0 -funroll-loops -fopt-info-vec -fargument-noalias
+CCFLAGS_NOVEC = -std=c++17 -O3 -funroll-loops -ffast-math -fargument-noalias
+CCFLAGS = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_OMP = -fopenmp -std=c++17 -O3 -ftree-vectorize -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_OMP_AVX512 = -fopenmp -std=c++17 -O3 -ftree-vectorize -mfma -mavx512f -mavx512cd -ffast-math -march=skylake-avx512 -flto -fno-trapping-math -fabi-version=0 -funroll-loops -fopt-info-vec -fargument-noalias
 //CCFLAGS_TBB = -std=c++17 -Ofast -xHost -fargument-noalias
-CCFLAGS_TBB = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_TBB = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
 # linker flags
 LFLAGS = -lm -lpthread
