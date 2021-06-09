@@ -7,13 +7,26 @@ int main (int argc, char** argv)
 {
 
   // initialize mpi
-  MPI_Init(&argc,&argv);
+  int thread_safety_level;
+  MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&thread_safety_level);
 
   // get rank and size
   int rank;
   int P;
   MPI_Comm_size(MPI_COMM_WORLD,&P);
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+
+  if (rank==0)
+    {
+      if (thread_safety_level==MPI_THREAD_SINGLE)
+	std::cout << "MPI_THREAD_SINGLE" << std::endl;
+      if (thread_safety_level==MPI_THREAD_FUNNELED)
+	std::cout << "MPI_THREAD_FUNNELED" << std::endl;
+      if (thread_safety_level==MPI_THREAD_SERIALIZED)
+	std::cout << "MPI_THREAD_SERIALIZED" << std::endl;
+      if (thread_safety_level==MPI_THREAD_MULTIPLE)
+	std::cout << "MPI_THREAD_MULTIPLE" << std::endl;
+    }
 
   // check args
   if (argc!=3)
