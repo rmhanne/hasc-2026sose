@@ -19,13 +19,13 @@ int main (int argc, char** argv)
   if (rank==0)
     {
       if (thread_safety_level==MPI_THREAD_SINGLE)
-	std::cout << "MPI_THREAD_SINGLE" << std::endl;
+        std::cout << "MPI_THREAD_SINGLE" << std::endl;
       if (thread_safety_level==MPI_THREAD_FUNNELED)
-	std::cout << "MPI_THREAD_FUNNELED" << std::endl;
+        std::cout << "MPI_THREAD_FUNNELED" << std::endl;
       if (thread_safety_level==MPI_THREAD_SERIALIZED)
-	std::cout << "MPI_THREAD_SERIALIZED" << std::endl;
+        std::cout << "MPI_THREAD_SERIALIZED" << std::endl;
       if (thread_safety_level==MPI_THREAD_MULTIPLE)
-	std::cout << "MPI_THREAD_MULTIPLE" << std::endl;
+        std::cout << "MPI_THREAD_MULTIPLE" << std::endl;
     }
 
   // check args
