@@ -12,7 +12,8 @@ CCTBB = g++-mp-10
 # AVX2 with vector class library
 CCFLAGS_NOVEC = -std=c++20 -O3 -funroll-loops -ffast-math -fargument-noalias
 CCFLAGS = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-CCFLAGS_OMP = -fopenmp -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_OMP = -fopenmp -std=c++20 -O3 -ftree-vectorize -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
+CCFLAGS_OMP_AVX512 = -fopenmp -std=c++20 -O3 -ftree-vectorize -mfma -mavx512f -mavx512cd -ffast-math -march=skylake-avx512 -flto -fno-trapping-math -fabi-version=0 -funroll-loops -fopt-info-vec -fargument-noalias
 //CCFLAGS_TBB = -std=c++17 -Ofast -xHost -fargument-noalias
 CCFLAGS_TBB = -std=c++20 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
@@ -33,6 +34,7 @@ all: scalar_product_v1\
      matmul_seq_v1\
      matmul_seq_v2\
      matmul_omp\
+     matmul_omp_avx512\
      pointer_chasing\
      transpose_v1\
      matvec_v1 \
@@ -76,6 +78,8 @@ matmul_seq_v2: matmul_seq_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_omp: matmul_omp.cc Makefile
 	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
+matmul_omp_avx512: matmul_omp_avx512.cc Makefile
+	$(CC) $(CCFLAGS_OMP_AVX512) -o $@ $< $(LFLAGS_OMP)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 transpose_v1: transpose_v1.cc Makefile
@@ -133,6 +137,7 @@ clean:
         matmul_seq_v1 \
         matmul_seq_v2 \
         matmul_omp \
+        matmul_omp_avx512 \
         pointer_chasing \
         transpose_v1 \
 	matvec_v1 \
