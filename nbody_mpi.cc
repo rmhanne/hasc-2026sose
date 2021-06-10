@@ -21,7 +21,7 @@
 // basic data type for position, velocity, acceleration
 const int M=4;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B=64; // block size for tiling
+const int B=32; // block size for tiling
 
 // model parameters
 const double G = 1.0; // gravitational constant
@@ -272,7 +272,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                   S =T0/U; // now S is the inverse factor for four particle pairs
 
                   // now update accelerations
-                  Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
+                  Ai.load(&ain[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
                 
                   // update Ai with all j
                   T2 = Vec4d(min[j]); // mass col j               
@@ -295,7 +295,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                   T0 = T2*U;
                   Ai = mul_add(T0,D3,Ai);
 
-                  Ai.store(&a[i][0]);
+                  Ai.store(&ain[i][0]);
 
                   // now update all columns from row i
                   T0 = Vec4d(m[i]); // row 0 mass

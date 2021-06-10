@@ -1,21 +1,23 @@
 # define your compiler
 #CC = g++-mp-9
 # CC = g++-8
-CC = g++
-CCMPI = mpicxx
-CCTBB = g++
+CC = g++-mp-10
+CCMPI = mpicxx-openmpi-gcc10
+CCTBB = g++-mp-10
 
 # compilation flags without GMP stuff
 # no vectorization
 #CCFLAGS = -O0
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
-CCFLAGS_NOVEC = -std=c++17 -O3 -funroll-loops -ffast-math -fargument-noalias
-CCFLAGS = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-CCFLAGS_OMP = -fopenmp -std=c++17 -O3 -ftree-vectorize -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
-CCFLAGS_OMP_AVX512 = -fopenmp -std=c++17 -O3 -ftree-vectorize -mfma -mavx512f -mavx512cd -ffast-math -march=skylake-avx512 -flto -fno-trapping-math -fabi-version=0 -funroll-loops -fopt-info-vec -fargument-noalias
+CCFLAGSBASE = -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
+AVX2FLAGS = -ftree-vectorize -mavx2 -mfma -fopt-info-vec
+AVX512FLAGS = -ftree-vectorize -mfma -mavx512f -mavx512cd -march=skylake-avx512 -flto
+OMPFLAGS = -fopenmp
+CCFLAGS = $(CCFLAGSBASE) $(AVX2FLAGS)
+CCFLAGS_AVX512 = $(CCFLAGS_BASE) $(AVX512FLAGS)
+
 //CCFLAGS_TBB = -std=c++17 -Ofast -xHost -fargument-noalias
-CCFLAGS_TBB = -std=c++17 -O3 -mavx2 -mfma -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 
 # linker flags
 LFLAGS = -lm -lpthread
@@ -49,6 +51,7 @@ all: scalar_product_v1\
      nbody_vectorized\
      nbody_mpi\
      nbody_omp\
+     nbody_mpi_omp\
      nbody_vectorized_threaded\
      nbody_tbb_v2\
      jacobi_seq\
@@ -77,9 +80,9 @@ matmul_seq_v1: matmul_seq_v1.cc Makefile
 matmul_seq_v2: matmul_seq_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_omp: matmul_omp.cc Makefile
-	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 matmul_omp_avx512: matmul_omp_avx512.cc Makefile
-	$(CC) $(CCFLAGS_OMP_AVX512) -o $@ $< $(LFLAGS_OMP)
+	$(CC) $(CCFLAGS_AVX512) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 transpose_v1: transpose_v1.cc Makefile
@@ -89,17 +92,19 @@ matvec_v1: matvec_v1.cc Makefile
 matvec_v2: matvec_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_vanilla: nbody_vanilla.cc Makefile nbody_generate.hh nbody_io.hh
-	$(CC) $(CCFLAGS_NOVEC) -o $@ $< $(LFLAGS)
+	$(CC) $(CCFLAGS_BASE) -o $@ $< $(LFLAGS)
 nbody_vectorized: nbody_vectorized.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_tbb_v2: nbody_tbb_v2.cc Makefile nbody_generate.hh nbody_io.hh
-	$(CCTBB) $(CCFLAGS_TBB) -o $@ $< $(LFLAGS_TBB)
+	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
 nbody_omp: nbody_omp.cc Makefile nbody_generate.hh nbody_io.hh
-	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 nbody_mpi: nbody_mpi.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CCMPI) $(CCFLAGS) -o $@ $< $(LFLAGS_MPI)
+nbody_mpi_omp: nbody_mpi_omp.cc Makefile nbody_generate.hh nbody_io.hh
+	$(CCMPI) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_MPI) $(LFLAGS_OMP)
 peterson: peterson.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 philosophers: philosophers.cc Makefile
@@ -115,15 +120,15 @@ producer_consumer: producer_consumer.cc Makefile
 jacobi_seq: jacobi_seq.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 jacobi_tbb: jacobi_tbb.cc Makefile
-	$(CCTBB) $(CCFLAGS_TBB) -o $@ $< $(LFLAGS_TBB)
+	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
 hello_openmp: hello_openmp.cc Makefile
-	$(CC) $(CCFLAGS_OMP) -o $@ $< $(LFLAGS_OMP)
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 hello_sendrecv: hello_sendrecv.cc Makefile MessageSystem.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 hello_mpi: hello_mpi.cc Makefile
 	$(CCMPI) $(CCFLAGS) -o $@ $< $(LFLAGS_MPI)
 hello_tbb: hello_tbb.cc Makefile
-	$(CCTBB) $(CCFLAGS_TBB) -o $@ $< $(LFLAGS_TBB)
+	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
 
 clean:
 	rm -f *.o \
