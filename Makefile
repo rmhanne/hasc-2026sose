@@ -1,9 +1,10 @@
 # define your compiler
 #CC = g++-mp-9
 # CC = g++-8
-CC = g++-mp-10
-CCMPI = mpicxx-openmpi-gcc10
-CCTBB = g++-mp-10
+CC = g++
+CCMPI = mpicxx
+CCTBB = g++
+DPCPP = dpcpp
 
 # compilation flags without GMP stuff
 # no vectorization
@@ -16,6 +17,7 @@ AVX512FLAGS = -ftree-vectorize -mfma -mavx512f -mavx512cd -march=skylake-avx512 
 OMPFLAGS = -fopenmp
 CCFLAGS = $(CCFLAGSBASE) $(AVX2FLAGS)
 CCFLAGS_AVX512 = $(CCFLAGS_BASE) $(AVX512FLAGS)
+CCFLAGS_DPCPP = -Ofast -fargument-noalias
 
 //CCFLAGS_TBB = -std=c++17 -Ofast -xHost -fargument-noalias
 
@@ -24,6 +26,7 @@ LFLAGS = -lm -lpthread
 LFLAGS_OMP = -lm -lpthread
 LFLAGS_MPI = -lm -lpthread
 LFLAGS_TBB = -lm -ltbb
+LFLAGS_DPCPP = 
 
 
 all: scalar_product_v1\
@@ -54,11 +57,13 @@ all: scalar_product_v1\
      nbody_mpi_omp\
      nbody_vectorized_threaded\
      nbody_tbb_v2\
+     nbody_sycl\
      jacobi_seq\
      jacobi_tbb\
      hello_openmp\
      hello_mpi\
      hello_tbb\
+     hello_sycl\
      hello_sendrecv
 
 scalar_product_v0: scalar_product_v0.cc Makefile
@@ -99,6 +104,8 @@ nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_tbb_v2: nbody_tbb_v2.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
+nbody_sycl: nbody_sycl.cc Makefile nbody_generate.hh nbody_io.hh
+	$(DPCPP) $(CCFLAGS_DPCPP) -o $@ $< $(LFLAGS_DPCPP)
 nbody_omp: nbody_omp.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 nbody_mpi: nbody_mpi.cc Makefile nbody_generate.hh nbody_io.hh
@@ -129,6 +136,8 @@ hello_mpi: hello_mpi.cc Makefile
 	$(CCMPI) $(CCFLAGS) -o $@ $< $(LFLAGS_MPI)
 hello_tbb: hello_tbb.cc Makefile
 	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
+hello_sycl: hello_sycl.cc Makefile
+	$(DPCPP) $(CCFLAGS_DPCPP) -o $@ $< $(LFLAGS_DPCPP)
 
 clean:
 	rm -f *.o \
@@ -164,4 +173,5 @@ clean:
 	hello_openmp \
 	hello_mpi \
 	hello_tbb \
+	hello_sycl \
 	hello_sendrecv
