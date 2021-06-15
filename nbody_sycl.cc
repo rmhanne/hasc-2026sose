@@ -12,9 +12,9 @@
 #include "time_experiment.hh"
 
 // basic data type for position, velocity, acceleration
-const int M=3;
+const int M=4;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B=16; // block size for tiling
+const int B=32; // block size 
 
 const double G = 1.0;
 const double epsilon2 = 1E-10;
@@ -45,36 +45,29 @@ void acceleration (size_t n, double3* x, double* m, double3* a)
       h.parallel_for(sycl::range<1>{n}, 
         [=](sycl::id<1> i)
         {
-          adevice[i][0] = 0.0;
-          adevice[i][1] = 0.0;
-          adevice[i][2] = 0.0;
+          for (size_t j=0; j<M; j++)
+            adevice[i][j] = 0.0;
         });
     });
 
   // now compute acceleration in parallel
+  sycl::range rg(n);
+  sycl::range rl(B); 
   Q.submit([&](sycl::handler& h)
     {
-      h.parallel_for(n,
-        [=](sycl::id<1> i)
+      h.parallel_for(sycl::nd_range(rg,rl),
+        [=](sycl::nd_item<1> it)
         {
-          for (int j=0; j<i; j++)
+          sycl::id<1> i = it.get_global_id();
+          for (int j=0; j<n; j++)
             {
               double d0 = x[j][0]-x[i][0];
               double d1 = x[j][1]-x[i][1];
               double d2 = x[j][2]-x[i][2]; 
-              double r2 = d0*d0 + d1*d1 + d2*d2 + epsilon2;
-              double r = sqrt(r2);
-              double factorj = m[j]*G/(r*r2);
-              a[i][0] += factorj*d0;
-              a[i][1] += factorj*d1;
-              a[i][2] += factorj*d2;
-            }
-          for (int j=i+1; j<n; j++)
-            {
-              double d0 = x[j][0]-x[i][0];
-              double d1 = x[j][1]-x[i][1];
-              double d2 = x[j][2]-x[i][2]; 
-              double r2 = d0*d0 + d1*d1 + d2*d2 + epsilon2;
+              double r2 = epsilon2;
+              r2 += d0*d0;
+              r2 += d1*d1;
+              r2 += d2*d2;
               double r = sqrt(r2);
               double factorj = m[j]*G/(r*r2);
               a[i][0] += factorj*d0;
