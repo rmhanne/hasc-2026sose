@@ -138,7 +138,7 @@ void acceleration_blocked_vectorized (int n, double* __restrict__ x, double* __r
 	  Ai2.load(&a[2*n+i]);
 
 	  // loop over masses j
-	  for (int j=J; j<J+B; j++)
+	  for (int j=J; j<J+B; ++j)
 	    {
 	      // now we compute the interaction of W masses with the mass j
 	      // distance vectors
@@ -154,8 +154,8 @@ void acceleration_blocked_vectorized (int n, double* __restrict__ x, double* __r
 	      R3 = mul_add(Di0,Di0,R3);
 	      R3 = mul_add(Di1,Di1,R3);
 	      R3 = mul_add(Di2,Di2,R3);
-	      S = sqrt(R3);
-	      R3 *= S;
+	      U = sqrt(R3);
+	      R3 *= U;
 	      
 	      // update acceleration
 	      S = VecWd(m[j]);
