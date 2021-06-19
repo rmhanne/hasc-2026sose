@@ -104,7 +104,7 @@ nbody_vanilla: nbody_vanilla.cc Makefile nbody_generate.hh nbody_io.hh
 nbody_vectorized: nbody_vectorized.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_vectorized_v2: nbody_vectorized_v2.cc Makefile nbody_generate.hh nbody_io.hh
-	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS)
 nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_tbb_v2: nbody_tbb_v2.cc Makefile nbody_generate.hh nbody_io.hh
