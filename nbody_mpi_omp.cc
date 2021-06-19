@@ -36,11 +36,11 @@ int blocks_total; // the total number of blocks of size B
 int blocks_per_rank; // number of blocks of size B in eaach rank
 int masses_per_rank; // number of masses in each rank
 
-//#include "acceleration_async.cc"
+//#include "acceleration_nonblocking_omp.cc"
 
 // version 3: 1x4 interaction, column major
 void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__ m,
-                   double3* __restrict__ a)
+                            double3* __restrict__ aglobal)
 {
   Vec4d Ai; // acceleration row
   Vec4d D0,D1,D2,D3; // distances
@@ -49,125 +49,146 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
 
   // start with interaction of blocks in the SAME process
   // loop over rows of blocks
-  for (int I=0; I<masses_per_rank; I+=B)
-    {
-      // block (I,I) diagonal block, treat classically
-      for (int i=I; i<I+B; i++)
-        for (int j=i+1; j<I+B; j++)
-          {
-            double d0 = x[j][0]-x[i][0];
-            double d1 = x[j][1]-x[i][1];
-            double d2 = x[j][2]-x[i][2]; 
-            double r2 = d0*d0 + d1*d1 + d2*d2 + epsilon2;
-            double r = sqrt(r2);
-            double invfact = G/(r*r2);
-            double factori = m[i]*invfact;
-            double factorj = m[j]*invfact;
-            a[i][0] += factorj*d0;
-            a[i][1] += factorj*d1;
-            a[i][2] += factorj*d2;
-            a[j][0] -= factori*d0;
-            a[j][1] -= factori*d1;
-            a[j][2] -= factori*d2;
-          }
-      // blocks J>I; offdiagonal block. Particles are not the same
-      for (int J=I+B; J<masses_per_rank; J+=B) // loop over columns of blocks
-        for (int j=J; j<J+B; j+=4) // loop over 4 particles
-          {
-            // update accelerations of four particles
-            A0.load(&a[j][0]);
-            A1.load(&a[j+1][0]);
-            A2.load(&a[j+2][0]);
-            A3.load(&a[j+3][0]);
+#pragma omp parallel shared(aglobal), firstprivate(n,x,m,masses_per_rank,B) private(Ai,D0,D1,D2,D3,A0,A1,A2,A3,S,U,T0,T1,T2)
+  {
+    // make private acceleration vector to accumulate to
+    std::vector<std::array<double,M>> a(masses_per_rank,{0.0,0.0,0.0,0.0});
 
-            // loop over particles in row
-            for (int i=I; i<I+B; i+=1)
-              {
-                // distances 2x4 masses
-                T0.load(&x[i][0]); // position particle i
-                D0.load(&x[j][0]); // positions of all particles j...j+3
-                D1.load(&x[j+1][0]);
-                D2.load(&x[j+2][0]);
-                D3.load(&x[j+3][0]);
-                D0 -= T0; // distance vector; is needed later
-                D1 -= T0;
-                D2 -= T0;
-                D3 -= T0;
+#pragma omp for schedule (static,1) 
+    for (int I=0; I<masses_per_rank; I+=B)
+      {
+        // block (I,I) diagonal block, treat classically
+        for (int i=I; i<I+B; i++)
+          for (int j=i+1; j<I+B; j++)
+            {
+              double d0 = x[j][0]-x[i][0];
+              double d1 = x[j][1]-x[i][1];
+              double d2 = x[j][2]-x[i][2];
+              double r2 = d0*d0 + d1*d1 + d2*d2 + epsilon2;
+              double r = sqrt(r2);
+              double invfact = G/(r*r2);
+              double factori = m[i]*invfact;
+              double factorj = m[j]*invfact;
+              a[i][0] += factorj*d0;
+              a[i][1] += factorj*d1;
+              a[i][2] += factorj*d2;
+              a[j][0] -= factori*d0;
+              a[j][1] -= factori*d1;
+              a[j][2] -= factori*d2;
+            }
+        // blocks J>I; offdiagonal block. Particles are not the same
+        for (int J=I+B; J<masses_per_rank; J+=B) // loop over columns of blocks
+          for (int j=J; j<J+B; j+=4) // loop over 4 particles
+            {
+              // update accelerations of four particles
+              A0.load(&a[j][0]);
+              A1.load(&a[j+1][0]);
+              A2.load(&a[j+2][0]);
+              A3.load(&a[j+3][0]);
+
+              // loop over particles in row
+              for (int i=I; i<I+B; i+=1)
+                {
+                  // distances 2x4 masses
+                  T0.load(&x[i][0]); // position particle i
+                  D0.load(&x[j][0]); // positions of all particles j...j+3
+                  D1.load(&x[j+1][0]);
+                  D2.load(&x[j+2][0]);
+                  D3.load(&x[j+3][0]);
+                  D0 -= T0; // distance vector; is needed later
+                  D1 -= T0;
+                  D2 -= T0;
+                  D3 -= T0;
                   
-                // transpose distances
-                S = blend4<0,4,1,5>(D0,D1);
-                U = blend4<0,4,1,5>(D2,D3);
-                T0 = blend4<0,1,4,5>(S,U); // all 0 components
-                T1 = blend4<2,3,6,7>(S,U); // all 1 components
-                S = blend4<2,6,V_DC,V_DC>(D0,D1);
-                U = blend4<2,6,V_DC,V_DC>(D2,D3);
-                T2 = blend4<0,1,4,5>(S,U); // all 2 components
+                  // transpose distances
+                  S = blend4<0,4,1,5>(D0,D1);
+                  U = blend4<0,4,1,5>(D2,D3);
+                  T0 = blend4<0,1,4,5>(S,U); // all 0 components
+                  T1 = blend4<2,3,6,7>(S,U); // all 1 components
+                  S = blend4<2,6,V_DC,V_DC>(D0,D1);
+                  U = blend4<2,6,V_DC,V_DC>(D2,D3);
+                  T2 = blend4<0,1,4,5>(S,U); // all 2 components
 
-                // the norms first batch
-                S = Vec4d(epsilon2);
-                S = mul_add(T0,T0,S);
-                S = mul_add(T1,T1,S);
-                S = mul_add(T2,T2,S); // now S contains the norms 
+                  // the norms first batch
+                  S = Vec4d(epsilon2);
+                  S = mul_add(T0,T0,S);
+                  S = mul_add(T1,T1,S);
+                  S = mul_add(T2,T2,S); // now S contains the norms
 
-                // determine inverse factors
-                U = sqrt(S);
-                U *= S; // now U contains r^3
-                T0 = Vec4d(G);
-                S =T0/U; // now S is the inverse factor for four particle pairs
+                  // determine inverse factors
+                  U = sqrt(S);
+                  U *= S; // now U contains r^3
+                  T0 = Vec4d(G);
+                  S =T0/U; // now S is the inverse factor for four particle pairs
 
-                // now update accelerations
-                Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
+                  // now update accelerations
+                  Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
                 
-                // update Ai with all j
-                T2 = Vec4d(m[j]); // mass col j           
-                U = permute4<0,0,0,0>(S); // scalar factor column j
-                T0 = T2*U;
-                Ai = mul_add(T0,D0,Ai);
+                  // update Ai with all j
+                  T2 = Vec4d(m[j]); // mass col j
+                  U = permute4<0,0,0,0>(S); // scalar factor column j
+                  T0 = T2*U;
+                  Ai = mul_add(T0,D0,Ai);
 
-                T2 = Vec4d(m[j+1]); // mass col j+1               
-                U = permute4<1,1,1,1>(S); // scalar factor column j
-                T0 = T2*U;
-                Ai = mul_add(T0,D1,Ai);
+                  T2 = Vec4d(m[j+1]); // mass col j+1
+                  U = permute4<1,1,1,1>(S); // scalar factor column j
+                  T0 = T2*U;
+                  Ai = mul_add(T0,D1,Ai);
 
-                T2 = Vec4d(m[j+2]); // mass col j+2               
-                U = permute4<2,2,2,2>(S); // scalar factor column j
-                T0 = T2*U;
-                Ai = mul_add(T0,D2,Ai);
+                  T2 = Vec4d(m[j+2]); // mass col j+2
+                  U = permute4<2,2,2,2>(S); // scalar factor column j
+                  T0 = T2*U;
+                  Ai = mul_add(T0,D2,Ai);
 
-                T2 = Vec4d(m[j+3]); // mass col j+3               
-                U = permute4<3,3,3,3>(S); // scalar factor column j
-                T0 = T2*U;
-                Ai = mul_add(T0,D3,Ai);
+                  T2 = Vec4d(m[j+3]); // mass col j+3
+                  U = permute4<3,3,3,3>(S); // scalar factor column j
+                  T0 = T2*U;
+                  Ai = mul_add(T0,D3,Ai);
 
-                Ai.store(&a[i][0]);
+                  Ai.store(&a[i][0]);
 
-                // now update all columns from row i
-                T0 = Vec4d(m[i]); // row 0 mass
-                U = permute4<0,0,0,0>(S); // scalar factor column j row 0
-                T2 = T0*U;
-                A0 = nmul_add(T2,D0,A0);
+                  // now update all columns from row i
+                  T0 = Vec4d(m[i]); // row 0 mass
+                  U = permute4<0,0,0,0>(S); // scalar factor column j row 0
+                  T2 = T0*U;
+                  A0 = nmul_add(T2,D0,A0);
 
-                U = permute4<1,1,1,1>(S); // scalar factor column j+1 row 0
-                T2 = T0*U;
-                A1 = nmul_add(T2,D1,A1);
+                  U = permute4<1,1,1,1>(S); // scalar factor column j+1 row 0
+                  T2 = T0*U;
+                  A1 = nmul_add(T2,D1,A1);
 
-                U = permute4<2,2,2,2>(S); // scalar factor column j+2 row 0
-                T2 = T0*U;
-                A2 = nmul_add(T2,D2,A2);
+                  U = permute4<2,2,2,2>(S); // scalar factor column j+2 row 0
+                  T2 = T0*U;
+                  A2 = nmul_add(T2,D2,A2);
 
-                U = permute4<3,3,3,3>(S); // scalar factor column j+3 row 0
-                T2 = T0*U;
-                A3 = nmul_add(T2,D3,A3);
-              }
+                  U = permute4<3,3,3,3>(S); // scalar factor column j+3 row 0
+                  T2 = T0*U;
+                  A3 = nmul_add(T2,D3,A3);
+                }
 
-            // update accelerations of four particles
-            A0.store(&a[j][0]);
-            A1.store(&a[j+1][0]);
-            A2.store(&a[j+2][0]);
-            A3.store(&a[j+3][0]);
-          }
+              // update accelerations of four particles
+              A0.store(&a[j][0]);
+              A1.store(&a[j+1][0]);
+              A2.store(&a[j+2][0]);
+              A3.store(&a[j+3][0]);
+            }
+      }
+    // now we need to reduce the private accelerations
+#pragma omp critical
+    {
+      for (int i=0; i<n; i++)
+        {
+          aglobal[i][0] += a[i][0];
+          aglobal[i][1] += a[i][1];
+          aglobal[i][2] += a[i][2];
+        }
     }
+  } // end parallel regions
 
+  if (P==1)
+    return;
+
+  // now comes the interaction with the masses of the other ranks
   // data buffers
   std::vector<std::array<double,M>> xin(masses_per_rank);
   std::vector<std::array<double,M>> xout(masses_per_rank);
@@ -177,6 +198,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
   std::vector<double> mout(masses_per_rank);
 
   // prepare outgoing buffers
+  // messages are always sent by the main thread
   for (int i=0; i<masses_per_rank; i++)
     for (int j=0; j<M; j++)
       xout[i][j] = x[i][j]; // send my own positions in first round
@@ -225,103 +247,132 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
       int s = (rank+round)%P;
       int O = (rank<s) ? 0 : B; // determine if diagonal needs to be computed
 
+
       // compute block interactions
-      for (int I=0; I<masses_per_rank; I+=B)
-        for (int J=I+O; J<masses_per_rank; J+=B) // loop over columns of blocks
-          for (int j=J; j<J+B; j+=4) // loop over 4 particles
-            {
-              // update accelerations of four particles
-              A0.load(&ain[j][0]);
-              A1.load(&ain[j+1][0]);
-              A2.load(&ain[j+2][0]);
-              A3.load(&ain[j+3][0]);
+#pragma omp parallel shared(ain,xin,min), firstprivate(n,x,m,masses_per_rank,B) private(Ai,D0,D1,D2,D3,A0,A1,A2,A3,S,U,T0,T1,T2)
+      {
+        // make private acceleration vector to accumulate to
+        std::vector<std::array<double,M>> a(masses_per_rank,{0.0,0.0,0.0,0.0});
+        std::vector<std::array<double,M>> a_to_self(masses_per_rank,{0.0,0.0,0.0,0.0});
 
-              // loop over particles in row
-              for (int i=I; i<I+B; i+=1)
-                {
-                  // distances 2x4 masses
-                  T0.load(&x[i][0]); // position particle i
-                  D0.load(&xin[j][0]); // positions of all particles j...j+3
-                  D1.load(&xin[j+1][0]);
-                  D2.load(&xin[j+2][0]);
-                  D3.load(&xin[j+3][0]);
-                  D0 -= T0; // distance vector; is needed later
-                  D1 -= T0;
-                  D2 -= T0;
-                  D3 -= T0;
+#pragma omp for schedule (static,1) 
+        for (int I=0; I<masses_per_rank; I+=B)
+          for (int J=I+O; J<masses_per_rank; J+=B) // loop over columns of blocks
+            for (int j=J; j<J+B; j+=4) // loop over 4 particles
+              {
+                // update accelerations of four particles
+                A0.load(&a[j][0]);
+                A1.load(&a[j+1][0]);
+                A2.load(&a[j+2][0]);
+                A3.load(&a[j+3][0]);
+
+                // loop over particles in row
+                for (int i=I; i<I+B; i+=1)
+                  {
+                    // distances 2x4 masses
+                    T0.load(&x[i][0]); // position particle i
+                    D0.load(&xin[j][0]); // positions of all particles j...j+3
+                    D1.load(&xin[j+1][0]);
+                    D2.load(&xin[j+2][0]);
+                    D3.load(&xin[j+3][0]);
+                    D0 -= T0; // distance vector; is needed later
+                    D1 -= T0;
+                    D2 -= T0;
+                    D3 -= T0;
                   
-                  // transpose distances
-                  S = blend4<0,4,1,5>(D0,D1);
-                  U = blend4<0,4,1,5>(D2,D3);
-                  T0 = blend4<0,1,4,5>(S,U); // all 0 components
-                  T1 = blend4<2,3,6,7>(S,U); // all 1 components
-                  S = blend4<2,6,V_DC,V_DC>(D0,D1);
-                  U = blend4<2,6,V_DC,V_DC>(D2,D3);
-                  T2 = blend4<0,1,4,5>(S,U); // all 2 components
+                    // transpose distances
+                    S = blend4<0,4,1,5>(D0,D1);
+                    U = blend4<0,4,1,5>(D2,D3);
+                    T0 = blend4<0,1,4,5>(S,U); // all 0 components
+                    T1 = blend4<2,3,6,7>(S,U); // all 1 components
+                    S = blend4<2,6,V_DC,V_DC>(D0,D1);
+                    U = blend4<2,6,V_DC,V_DC>(D2,D3);
+                    T2 = blend4<0,1,4,5>(S,U); // all 2 components
 
-                  // the norms first batch
-                  S = Vec4d(epsilon2);
-                  S = mul_add(T0,T0,S);
-                  S = mul_add(T1,T1,S);
-                  S = mul_add(T2,T2,S); // now S contains the norms 
+                    // the norms first batch
+                    S = Vec4d(epsilon2);
+                    S = mul_add(T0,T0,S);
+                    S = mul_add(T1,T1,S);
+                    S = mul_add(T2,T2,S); // now S contains the norms
 
-                  // determine inverse factors
-                  U = sqrt(S);
-                  U *= S; // now U contains r^3
-                  T0 = Vec4d(G);
-                  S =T0/U; // now S is the inverse factor for four particle pairs
+                    // determine inverse factors
+                    U = sqrt(S);
+                    U *= S; // now U contains r^3
+                    T0 = Vec4d(G);
+                    S =T0/U; // now S is the inverse factor for four particle pairs
 
-                  // now update accelerations
-                  Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
+                    // now update accelerations
+                    Ai.load(&a_to_self[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
                 
-                  // update Ai with all j
-                  T2 = Vec4d(min[j]); // mass col j               
-                  U = permute4<0,0,0,0>(S); // scalar factor column j
-                  T0 = T2*U;
-                  Ai = mul_add(T0,D0,Ai);
+                    // update Ai with all j
+                    T2 = Vec4d(min[j]); // mass col j
+                    U = permute4<0,0,0,0>(S); // scalar factor column j
+                    T0 = T2*U;
+                    Ai = mul_add(T0,D0,Ai);
 
-                  T2 = Vec4d(min[j+1]); // mass col j+1           
-                  U = permute4<1,1,1,1>(S); // scalar factor column j
-                  T0 = T2*U;
-                  Ai = mul_add(T0,D1,Ai);
+                    T2 = Vec4d(min[j+1]); // mass col j+1
+                    U = permute4<1,1,1,1>(S); // scalar factor column j
+                    T0 = T2*U;
+                    Ai = mul_add(T0,D1,Ai);
 
-                  T2 = Vec4d(min[j+2]); // mass col j+2           
-                  U = permute4<2,2,2,2>(S); // scalar factor column j
-                  T0 = T2*U;
-                  Ai = mul_add(T0,D2,Ai);
+                    T2 = Vec4d(min[j+2]); // mass col j+2
+                    U = permute4<2,2,2,2>(S); // scalar factor column j
+                    T0 = T2*U;
+                    Ai = mul_add(T0,D2,Ai);
 
-                  T2 = Vec4d(min[j+3]); // mass col j+3           
-                  U = permute4<3,3,3,3>(S); // scalar factor column j
-                  T0 = T2*U;
-                  Ai = mul_add(T0,D3,Ai);
+                    T2 = Vec4d(min[j+3]); // mass col j+3
+                    U = permute4<3,3,3,3>(S); // scalar factor column j
+                    T0 = T2*U;
+                    Ai = mul_add(T0,D3,Ai);
 
-                  Ai.store(&a[i][0]);
+                    Ai.store(&a_to_self[i][0]);
 
-                  // now update all columns from row i
-                  T0 = Vec4d(m[i]); // row 0 mass
-                  U = permute4<0,0,0,0>(S); // scalar factor column j row 0
-                  T2 = T0*U;
-                  A0 = nmul_add(T2,D0,A0);
+                    // now update all columns from row i
+                    T0 = Vec4d(m[i]); // row 0 mass
+                    U = permute4<0,0,0,0>(S); // scalar factor column j row 0
+                    T2 = T0*U;
+                    A0 = nmul_add(T2,D0,A0);
 
-                  U = permute4<1,1,1,1>(S); // scalar factor column j+1 row 0
-                  T2 = T0*U;
-                  A1 = nmul_add(T2,D1,A1);
+                    U = permute4<1,1,1,1>(S); // scalar factor column j+1 row 0
+                    T2 = T0*U;
+                    A1 = nmul_add(T2,D1,A1);
 
-                  U = permute4<2,2,2,2>(S); // scalar factor column j+2 row 0
-                  T2 = T0*U;
-                  A2 = nmul_add(T2,D2,A2);
+                    U = permute4<2,2,2,2>(S); // scalar factor column j+2 row 0
+                    T2 = T0*U;
+                    A2 = nmul_add(T2,D2,A2);
 
-                  U = permute4<3,3,3,3>(S); // scalar factor column j+3 row 0
-                  T2 = T0*U;
-                  A3 = nmul_add(T2,D3,A3);
-                }
+                    U = permute4<3,3,3,3>(S); // scalar factor column j+3 row 0
+                    T2 = T0*U;
+                    A3 = nmul_add(T2,D3,A3);
+                  }
 
-              // update accelerations of four particles
-              A0.store(&ain[j][0]);
-              A1.store(&ain[j+1][0]);
-              A2.store(&ain[j+2][0]);
-              A3.store(&ain[j+3][0]);
+                // update accelerations of four particles
+                A0.store(&a[j][0]);
+                A1.store(&a[j+1][0]);
+                A2.store(&a[j+2][0]);
+                A3.store(&a[j+3][0]);
+              }
+
+        // now we need to reduce the private accelerations
+#pragma omp critical
+        {
+          for (int i=0; i<n; i++)
+            {
+              ain[i][0] += a[i][0];
+              ain[i][1] += a[i][1];
+              ain[i][2] += a[i][2];
             }
+        }
+#pragma omp critical
+        {
+          for (int i=0; i<n; i++)
+            {
+              aglobal[i][0] += a_to_self[i][0];
+              aglobal[i][1] += a_to_self[i][1];
+              aglobal[i][2] += a_to_self[i][2];
+            }
+        }
+      } // end parallel region
 
       // now swap in and out; so we send off what we just worked on
       std::swap(xin,xout); // now the received positions are in xin
@@ -329,24 +380,27 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
       std::swap(ain,aout); // now the received accelerations are in min
     }
 
-  // need to shift acceleration one more time, so we get the
-  // computations of the others
-  if (rank%2==0) // to avoid deadlock; P must be even
-    {
-      MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-      MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-    }
-  else
-    {
-      MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-      MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-    }
+  if (P>1){
+    // need to shift acceleration one more time, so we get the
+    // computations of the others
+    if (rank%2==0) // to avoid deadlock; P must be even
+      {
+        MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
+        MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+      }
+    else
+      {
+        MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+        MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
+      }
 
-  // accumulate the contributions of others to our acceleration
-  for (int i=0; i<masses_per_rank; i++)
-    for (int j=0; j<3; j++)
-      a[i][j] += ain[i][j];
+    // accumulate the contributions of others to our acceleration
+    for (int i=0; i<masses_per_rank; i++)
+      for (int j=0; j<3; j++)
+        aglobal[i][j] += ain[i][j];
+  }
 }
+
 
 /** \brief do one time step with leapfrog
  *
@@ -396,7 +450,15 @@ int main (int argc, char** argv)
   double dt;          // time step
 
   // initialize mpi
-  MPI_Init(&argc,&argv);
+  // request MPI_THREAD_MULTIPLE although we don't need it
+  int thread_safety_level;
+  MPI_Init_thread(&argc,&argv,MPI_THREAD_MULTIPLE,&thread_safety_level);
+  if (thread_safety_level!=MPI_THREAD_MULTIPLE)
+    {
+      if (rank==0)
+        std::cout << "could not get MPI_THREAD_MULTIPLE" << std::endl;
+      MPI_Finalize();
+    }
 
   // get rank and size and store it in global variables
   MPI_Comm_size(MPI_COMM_WORLD,&P);
@@ -504,7 +566,7 @@ int main (int argc, char** argv)
       MPI_Finalize();
       return 0;
     }
-  if (P%2!=0)
+  if (P%2!=0 && P!=1)
     {
       if (rank==0)
         std::cout << P << "=P is not even" << std::endl;
@@ -575,7 +637,7 @@ int main (int argc, char** argv)
         {
           auto stop = get_time_stamp();
           double elapsed = get_duration_seconds(start,stop);
-	  elapsed_total += elapsed;
+          elapsed_total += elapsed;
           double flop = mod*(13.0*n*(n-1.0)+12.0*n);
           if (rank==0)
             printf("%d: %g seconds for %g ops = %g GFLOPS\n",rank,elapsed,flop,flop/elapsed/1E9);

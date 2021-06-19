@@ -36,10 +36,9 @@ int blocks_total; // the total number of blocks of size B
 int blocks_per_rank; // number of blocks of size B in eaach rank
 int masses_per_rank; // number of masses in each rank
 
-//#include "acceleration_async.cc"
 
 // version 3: 1x4 interaction, column major
-void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__ m,
+void acceleration_nonblocking (int n, double3* __restrict__ x, double* __restrict__ m,
                    double3* __restrict__ a)
 {
   Vec4d Ai; // acceleration row
@@ -47,7 +46,46 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
   Vec4d A0,A1,A2,A3; // accelerations columns
   Vec4d S,U,T0,T1,T2; // temporaries
 
-  // start with interaction of blocks in the SAME process
+  // data buffers
+  std::vector<std::array<double,M>> xin(masses_per_rank);
+  std::vector<std::array<double,M>> xout(masses_per_rank);
+  std::vector<std::array<double,M>> ain(masses_per_rank);
+  std::vector<std::array<double,M>> aout(masses_per_rank);
+  std::vector<std::array<double,M>> atemp(masses_per_rank);
+  std::vector<double> min(masses_per_rank);
+  std::vector<double> mout(masses_per_rank);
+
+  // prepare outgoing buffers
+  for (int i=0; i<masses_per_rank; i++)
+    for (int j=0; j<M; j++)
+      xout[i][j] = x[i][j]; // send my own positions in first round
+  for (int i=0; i<masses_per_rank; i++)
+    for (int j=0; j<M; j++)
+      aout[i][j] = 0.0; // other ranks will accumulate to that
+  for (int i=0; i<masses_per_rank; i++)
+    mout[i] = m[i]; // send my own masses in first round
+
+  // message tags
+  int x_tag = 42;
+  int m_tag = 43;
+  int a_tag = 44;
+
+  // request objects
+  MPI_Request req_xin;
+  MPI_Request req_xout;
+  MPI_Request req_min;
+  MPI_Request req_mout;
+  MPI_Request req_ain;
+  MPI_Request req_aout;
+
+  // send off positions and masses to rank-1
+  MPI_Isend(xout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,x_tag,MPI_COMM_WORLD,&req_xout);
+  MPI_Isend(mout.data(),masses_per_rank,MPI_DOUBLE,(rank+P-1)%P,m_tag,MPI_COMM_WORLD,&req_mout);
+  // initiate receive of positions and masses from rank+1
+  MPI_Irecv(xin.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,x_tag,MPI_COMM_WORLD,&req_xin);
+  MPI_Irecv(min.data(),masses_per_rank,MPI_DOUBLE,(rank+1)%P,m_tag,MPI_COMM_WORLD,&req_min);
+
+  // interactions of masses owned by this rank
   // loop over rows of blocks
   for (int I=0; I<masses_per_rank; I+=B)
     {
@@ -57,7 +95,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
           {
             double d0 = x[j][0]-x[i][0];
             double d1 = x[j][1]-x[i][1];
-            double d2 = x[j][2]-x[i][2]; 
+            double d2 = x[j][2]-x[i][2];
             double r2 = d0*d0 + d1*d1 + d2*d2 + epsilon2;
             double r = sqrt(r2);
             double invfact = G/(r*r2);
@@ -93,7 +131,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                 D1 -= T0;
                 D2 -= T0;
                 D3 -= T0;
-                  
+
                 // transpose distances
                 S = blend4<0,4,1,5>(D0,D1);
                 U = blend4<0,4,1,5>(D2,D3);
@@ -107,7 +145,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                 S = Vec4d(epsilon2);
                 S = mul_add(T0,T0,S);
                 S = mul_add(T1,T1,S);
-                S = mul_add(T2,T2,S); // now S contains the norms 
+                S = mul_add(T2,T2,S); // now S contains the norms
 
                 // determine inverse factors
                 U = sqrt(S);
@@ -117,24 +155,24 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
 
                 // now update accelerations
                 Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
-                
+
                 // update Ai with all j
-                T2 = Vec4d(m[j]); // mass col j           
+                T2 = Vec4d(m[j]); // mass col j
                 U = permute4<0,0,0,0>(S); // scalar factor column j
                 T0 = T2*U;
                 Ai = mul_add(T0,D0,Ai);
 
-                T2 = Vec4d(m[j+1]); // mass col j+1               
+                T2 = Vec4d(m[j+1]); // mass col j+1
                 U = permute4<1,1,1,1>(S); // scalar factor column j
                 T0 = T2*U;
                 Ai = mul_add(T0,D1,Ai);
 
-                T2 = Vec4d(m[j+2]); // mass col j+2               
+                T2 = Vec4d(m[j+2]); // mass col j+2
                 U = permute4<2,2,2,2>(S); // scalar factor column j
                 T0 = T2*U;
                 Ai = mul_add(T0,D2,Ai);
 
-                T2 = Vec4d(m[j+3]); // mass col j+3               
+                T2 = Vec4d(m[j+3]); // mass col j+3
                 U = permute4<3,3,3,3>(S); // scalar factor column j
                 T0 = T2*U;
                 Ai = mul_add(T0,D3,Ai);
@@ -168,28 +206,9 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
           }
     }
 
-  // data buffers
-  std::vector<std::array<double,M>> xin(masses_per_rank);
-  std::vector<std::array<double,M>> xout(masses_per_rank);
-  std::vector<std::array<double,M>> ain(masses_per_rank);
-  std::vector<std::array<double,M>> aout(masses_per_rank);
-  std::vector<double> min(masses_per_rank);
-  std::vector<double> mout(masses_per_rank);
-
-  // prepare outgoing buffers
-  for (int i=0; i<masses_per_rank; i++)
-    for (int j=0; j<M; j++)
-      xout[i][j] = x[i][j]; // send my own positions in first round
-  for (int i=0; i<masses_per_rank; i++)
-    for (int j=0; j<M; j++)
-      aout[i][j] = 0.0; // other ranks will accumulate to that
-  for (int i=0; i<masses_per_rank; i++)
-    mout[i] = m[i]; // send my own masses in first round
-
-  // message tags
-  int x_tag = 42;
-  int m_tag = 43;
-  int a_tag = 44;
+  // send off accelerations to rank-1
+  // this could have done before as they are zero anyway
+  MPI_Isend(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD,&req_aout);
 
   // now do the interactions with masses in other processes
   // Idea:
@@ -198,32 +217,40 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
   //   - accumulate acceleration for the foreign rank and pass it on as well
   for (int round=1; round<P; ++round)
     {
-      //std::cout << rank << ": starting round " << round << std::endl;
-      
-      // exchange data with neighbors: send *out to left, rcv *in from right
-      if (rank%2==0) // to avoid deadlock; P must be even
-        {
-          MPI_Send(xout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,x_tag,MPI_COMM_WORLD);
-          MPI_Recv(xin.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,x_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-          MPI_Send(mout.data(),masses_per_rank,MPI_DOUBLE,(rank+P-1)%P,m_tag,MPI_COMM_WORLD);
-          MPI_Recv(min.data(),masses_per_rank,MPI_DOUBLE,(rank+1)%P,m_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-          MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-          MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-        }
-      else
-        {
-          MPI_Recv(xin.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,x_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-          MPI_Send(xout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,x_tag,MPI_COMM_WORLD);
-          MPI_Recv(min.data(),masses_per_rank,MPI_DOUBLE,(rank+1)%P,m_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-          MPI_Send(mout.data(),masses_per_rank,MPI_DOUBLE,(rank+P-1)%P,m_tag,MPI_COMM_WORLD);
-          MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-          MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-        }
-
       // the positions and masses we have in this round are from the following rank
       // in round P-1 we have seen all the data
       int s = (rank+round)%P;
       int O = (rank<s) ? 0 : B; // determine if diagonal needs to be computed
+
+      // now we need the positions and masses; they are from rank s
+      MPI_Wait(&req_xin,MPI_STATUS_IGNORE);
+      MPI_Wait(&req_min,MPI_STATUS_IGNORE);
+
+      // we also need to see that we have sent off the masses from the previous step
+      MPI_Wait(&req_xout,MPI_STATUS_IGNORE);
+      MPI_Wait(&req_mout,MPI_STATUS_IGNORE);
+
+      // now swap the arrays
+      // this means the received data to be used in this round is now in "out"
+      std::swap(xin,xout); // now the received positions are in xout
+      std::swap(min,mout); // now the received masses are in mout
+
+      // send off positions and masses just received to rank-1
+      MPI_Isend(xout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,x_tag,MPI_COMM_WORLD,&req_xout);
+      MPI_Isend(mout.data(),masses_per_rank,MPI_DOUBLE,(rank+P-1)%P,m_tag,MPI_COMM_WORLD,&req_mout);
+
+      // initiate receive of positions and masses from rank+1
+      MPI_Irecv(xin.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,x_tag,MPI_COMM_WORLD,&req_xin);
+      MPI_Irecv(min.data(),masses_per_rank,MPI_DOUBLE,(rank+1)%P,m_tag,MPI_COMM_WORLD,&req_min);
+
+      // initiate receive of acceleration from rank+1
+      // the update for these accelerations is computed in a temporary in this round
+      MPI_Irecv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,&req_ain);
+
+      // clear accelerations
+      for (int i=0; i<masses_per_rank; i++)
+        for (int j=0; j<M; j++)
+          atemp[i][j] = 0.0;
 
       // compute block interactions
       for (int I=0; I<masses_per_rank; I+=B)
@@ -231,25 +258,25 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
           for (int j=J; j<J+B; j+=4) // loop over 4 particles
             {
               // update accelerations of four particles
-              A0.load(&ain[j][0]);
-              A1.load(&ain[j+1][0]);
-              A2.load(&ain[j+2][0]);
-              A3.load(&ain[j+3][0]);
+              A0.load(&atemp[j][0]);
+              A1.load(&atemp[j+1][0]);
+              A2.load(&atemp[j+2][0]);
+              A3.load(&atemp[j+3][0]);
 
               // loop over particles in row
               for (int i=I; i<I+B; i+=1)
                 {
                   // distances 2x4 masses
                   T0.load(&x[i][0]); // position particle i
-                  D0.load(&xin[j][0]); // positions of all particles j...j+3
-                  D1.load(&xin[j+1][0]);
-                  D2.load(&xin[j+2][0]);
-                  D3.load(&xin[j+3][0]);
+                  D0.load(&xout[j][0]); // positions of all particles j...j+3
+                  D1.load(&xout[j+1][0]);
+                  D2.load(&xout[j+2][0]);
+                  D3.load(&xout[j+3][0]);
                   D0 -= T0; // distance vector; is needed later
                   D1 -= T0;
                   D2 -= T0;
                   D3 -= T0;
-                  
+
                   // transpose distances
                   S = blend4<0,4,1,5>(D0,D1);
                   U = blend4<0,4,1,5>(D2,D3);
@@ -263,7 +290,7 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                   S = Vec4d(epsilon2);
                   S = mul_add(T0,T0,S);
                   S = mul_add(T1,T1,S);
-                  S = mul_add(T2,T2,S); // now S contains the norms 
+                  S = mul_add(T2,T2,S); // now S contains the norms
 
                   // determine inverse factors
                   U = sqrt(S);
@@ -273,24 +300,24 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
 
                   // now update accelerations
                   Ai.load(&a[i][0]); // particle i, and we have particles j,...,j+3 in A0,..., A3
-                
+
                   // update Ai with all j
-                  T2 = Vec4d(min[j]); // mass col j               
+                  T2 = Vec4d(mout[j]); // mass col j
                   U = permute4<0,0,0,0>(S); // scalar factor column j
                   T0 = T2*U;
                   Ai = mul_add(T0,D0,Ai);
 
-                  T2 = Vec4d(min[j+1]); // mass col j+1           
+                  T2 = Vec4d(mout[j+1]); // mass col j+1
                   U = permute4<1,1,1,1>(S); // scalar factor column j
                   T0 = T2*U;
                   Ai = mul_add(T0,D1,Ai);
 
-                  T2 = Vec4d(min[j+2]); // mass col j+2           
+                  T2 = Vec4d(mout[j+2]); // mass col j+2
                   U = permute4<2,2,2,2>(S); // scalar factor column j
                   T0 = T2*U;
                   Ai = mul_add(T0,D2,Ai);
 
-                  T2 = Vec4d(min[j+3]); // mass col j+3           
+                  T2 = Vec4d(mout[j+3]); // mass col j+3
                   U = permute4<3,3,3,3>(S); // scalar factor column j
                   T0 = T2*U;
                   Ai = mul_add(T0,D3,Ai);
@@ -317,36 +344,51 @@ void acceleration_blocking (int n, double3* __restrict__ x, double* __restrict__
                 }
 
               // update accelerations of four particles
-              A0.store(&ain[j][0]);
-              A1.store(&ain[j+1][0]);
-              A2.store(&ain[j+2][0]);
-              A3.store(&ain[j+3][0]);
+              A0.store(&atemp[j][0]);
+              A1.store(&atemp[j+1][0]);
+              A2.store(&atemp[j+2][0]);
+              A3.store(&atemp[j+3][0]);
             }
 
-      // now swap in and out; so we send off what we just worked on
-      std::swap(xin,xout); // now the received positions are in xin
-      std::swap(min,mout); // now the received masses are in min
-      std::swap(ain,aout); // now the received accelerations are in min
+      // now we need the accelerations from rank+1
+      MPI_Wait(&req_ain,MPI_STATUS_IGNORE);
+
+      // and we copy update
+      for (int i=0; i<masses_per_rank; i++)
+        for (int j=0; j<3; j++)
+          ain[i][j] += atemp[i][j] = 0.0;
+
+      // wait that accelerations from previous round have been sent off
+      MPI_Wait(&req_aout,MPI_STATUS_IGNORE);
+
+      // and swap so we can send aout
+      std::swap(ain,aout); // now the accelerations computed in this round are in aout
+
+      // send them off to rank-1
+      MPI_Isend(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD,&req_aout);
     }
 
-  // need to shift acceleration one more time, so we get the
-  // computations of the others
-  if (rank%2==0) // to avoid deadlock; P must be even
-    {
-      MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-      MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-    }
-  else
-    {
-      MPI_Recv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-      MPI_Send(aout.data(),masses_per_rank*M,MPI_DOUBLE,(rank+P-1)%P,a_tag,MPI_COMM_WORLD);
-    }
+  // wait for outstanding receive of positions
+  MPI_Wait(&req_xin,MPI_STATUS_IGNORE);
+  MPI_Wait(&req_min,MPI_STATUS_IGNORE);
+
+  // wait for outstanding sends of positions
+  MPI_Wait(&req_xout,MPI_STATUS_IGNORE);
+  MPI_Wait(&req_mout,MPI_STATUS_IGNORE);
+
+  // blocking wait for own acceleration updates
+  MPI_Irecv(ain.data(),masses_per_rank*M,MPI_DOUBLE,(rank+1)%P,a_tag,MPI_COMM_WORLD,&req_ain);
+  MPI_Wait(&req_ain,MPI_STATUS_IGNORE);
+
+  // wait that accelerations have been sent off in the last round have been sent
+  MPI_Wait(&req_aout,MPI_STATUS_IGNORE);
 
   // accumulate the contributions of others to our acceleration
   for (int i=0; i<masses_per_rank; i++)
     for (int j=0; j<3; j++)
       a[i][j] += ain[i][j];
 }
+
 
 /** \brief do one time step with leapfrog
  *
@@ -368,7 +410,7 @@ void leapfrog (int n, double dt, double3* __restrict__ x, double3* __restrict__ 
       a[i][j] = 0.0;
   
   // compute new acceleration: n*(n-1)*13 flops
-  acceleration_blocking(n,x,m,a);
+  acceleration_nonblocking(n,x,m,a);
 
   // update velocity: 6n flops
   for (int i=0; i<n; i++)
@@ -575,7 +617,7 @@ int main (int argc, char** argv)
         {
           auto stop = get_time_stamp();
           double elapsed = get_duration_seconds(start,stop);
-	  elapsed_total += elapsed;
+          elapsed_total += elapsed;
           double flop = mod*(13.0*n*(n-1.0)+12.0*n);
           if (rank==0)
             printf("%d: %g seconds for %g ops = %g GFLOPS\n",rank,elapsed,flop,flop/elapsed/1E9);
