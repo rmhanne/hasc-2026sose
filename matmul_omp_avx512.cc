@@ -9,7 +9,7 @@
 // is available in the directory vcl
 #include "vcl/vectorclass.h"
 
-const int P = 6;   // basic block size is a multiple of 4, 8 and 12
+const int P = 12;   // basic block size is a multiple of 4, 8 and 12
 const int Q = 8;    // multiplier=SIMD width
 const int M = P*Q;  // tile size
 const int N = M*128;// maximum problem size; 
@@ -281,21 +281,23 @@ int main (int argc, char** argv)
   for (int i=M; i<=N; i*=2) sizes.push_back(i);
   const size_t I=4;
   const size_t J=3;
-  const size_t K=1;
-  const size_t W=4;
-  std::cout << "N, Vec" << W << "d_" << I <<"_" << J << "_" << "K" << " P=" << P
+  const size_t K=24;
+  const size_t W=8;
+  std::cout << "N, "
+	  << "Vec8d_4_3_24x P=" << P 
+//	  << "Vec" << W << "d_" << I <<"_" << J << "_" << K << " P=" << P
 	    << std::endl;
   for (auto i : sizes)
     { 
-      // Experiment4 e4(i);
-      Experiment5<4,3,12,4> e5(i);
-      // auto d4 = time_experiment(e4,500000);
-      auto d5 = time_experiment(e5,500000);
-      // double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
-      double flops5 = d5.first*e5.operations()/d5.second*1e6/1e9;
+      Experiment4 e4(i);
+      //Experiment5<4,3,12,4> e5(i);
+      auto d4 = time_experiment(e4,500000);
+      //auto d5 = time_experiment(e5,500000);
+      double flops4 = d4.first*e4.operations()/d4.second*1e6/1e9;
+      //double flops5 = d5.first*e5.operations()/d5.second*1e6/1e9;
       std::cout << i
-                // << ", " << flops4
-                << ", " << flops5
+                << ", " << flops4
+      //          << ", " << flops5
                 << std::endl;
     }
   return 0;
