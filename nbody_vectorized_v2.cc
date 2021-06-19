@@ -121,7 +121,6 @@ struct SIMDSelector
 {
   const size_t width = simd_width;
 };
-
 template<>
 struct SIMDSelector<2>
 {

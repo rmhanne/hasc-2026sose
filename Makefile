@@ -90,7 +90,7 @@ matmul_seq_v2: matmul_seq_v2.cc Makefile
 matmul_omp: matmul_omp.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 matmul_omp_avx512: matmul_omp_avx512.cc Makefile
-	$(CC) $(CCFLAGS_AVX512) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 transpose_v1: transpose_v1.cc Makefile
