@@ -16,8 +16,7 @@
 // basic data type for position, velocity, acceleration
 const int M=3;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B=32; // block size for tiling
-const int W=4; // SIMD width
+const int B=40; // block size for tiling
 
 /*const double gamma = 6.674E-11;*/
 const double G = 1.0;
@@ -116,15 +115,54 @@ void acceleration_blocked_full (int n, double* __restrict__ x, double* __restric
 	  }
 }
 
+template<size_t simd_width>
+struct SIMDSelector
+{
+  const size_t width = simd_width;
+};
+
+template<>
+struct SIMDSelector<2>
+{
+  const std::string name = "SSE2";
+  const size_t simd_width = 2;
+  const size_t simd_registers = 16;
+  typedef Vec2d SIMDType;
+};
+template<>
+struct SIMDSelector<4>
+{
+  const std::string name = "AVX2";
+  const size_t simd_width = 4;
+  const size_t simd_registers = 16;
+  typedef Vec4d SIMDType;
+};
+template<>
+struct SIMDSelector<8>
+{
+  const std::string name = "AVX512";
+  const size_t simd_width = 8;
+  const size_t simd_registers = 32;
+  typedef Vec8d SIMDType;
+};
+
+template<size_t simd_width>
 void acceleration_blocked_vectorized (int n, double* __restrict__ x, double* __restrict__ m, double* __restrict__ a)
 {
-  using VecWd = Vec4d;
+  const size_t W=simd_width; // SIMD width
+  using VecWd = typename SIMDSelector<simd_width>::SIMDType; // SIMD type
+
+  // 16 registers!
   VecWd Xi0,Xi1,Xi2;
   VecWd Ai0,Ai1,Ai2;
-  VecWd Di0,Di1,Di2;
-  VecWd R3;
-  VecWd S,T,U; // auxiiliary registers
-    
+  VecWd Di0[2],Di1[2],Di2[2];
+  VecWd M[2],R3[2];
+
+  double xj0[2];
+  double xj1[2];
+  double xj2[2];
+  double mj[2];
+
   for (int I=0; I<n; I+=B)
     for (int J=0; J<n; J+=B)
       for (int i=I; i<I+B; i+=W)
@@ -136,34 +174,114 @@ void acceleration_blocked_vectorized (int n, double* __restrict__ x, double* __r
 	  Ai0.load(&a[i]);
 	  Ai1.load(&a[n+i]);
 	  Ai2.load(&a[2*n+i]);
+	  
+	  // prefetching of scalar(!) quantities
+	  xj0[0] = x[J];
+	  xj0[1] = x[J+1];
+	  xj1[0] = x[n+J];
+	  xj1[1] = x[n+J+1];
+	  xj2[0] = x[2*n+J];
+	  xj2[1] = x[2*n+J+1];
+	  mj[0] = G*m[J];
+	  mj[1] = G*m[J+1];
 
 	  // loop over masses j
-	  for (int j=J; j<J+B; ++j)
+	  for (int j=J; j<J+B-2; j+=2)
 	    {
 	      // now we compute the interaction of W masses with the mass j
 	      // distance vectors
-	      Di0.load(&x[j]);
-	      Di1.load(&x[n+j]);
-	      Di2.load(&x[2*n+j]);
-	      Di0 -= Xi0;
-	      Di1 -= Xi1;
-	      Di2 -= Xi2;
+	      Di0[0] = VecWd(xj0[0]); // hope that these are loaded now
+	      Di0[1] = VecWd(xj0[1]); // hope that these are loaded now
+	      Di1[0] = VecWd(xj1[0]);
+	      Di1[1] = VecWd(xj1[1]);
+	      Di2[0] = VecWd(xj2[0]);
+	      Di2[1] = VecWd(xj2[1]);
+	      xj0[0] = x[j+2]; // prefetch
+	      xj0[0] = x[j+3]; // prefetch
+	      xj1[0] = x[n+j+2];
+	      xj1[0] = x[n+j+3];
+	      xj2[0] = x[2*n+j+2];
+	      xj2[0] = x[2*n+j+3];
+
+	      Di0[0] -= Xi0;
+	      Di0[1] -= Xi0;
+	      Di1[0] -= Xi1;
+	      Di1[1] -= Xi1;
+	      Di2[0] -= Xi2;
+	      Di2[1] -= Xi2;
 
 	      // compute W distances^3
-	      R3 = VecWd(epsilon2);
-	      R3 = mul_add(Di0,Di0,R3);
-	      R3 = mul_add(Di1,Di1,R3);
-	      R3 = mul_add(Di2,Di2,R3);
-	      U = sqrt(R3);
-	      R3 *= U;
+	      R3[0] = VecWd(epsilon2);
+	      R3[1] = VecWd(epsilon2);
+	      R3[0] = mul_add(Di0[0],Di0[0],R3[0]);
+	      R3[1] = mul_add(Di0[1],Di0[1],R3[1]);
+	      R3[0] = mul_add(Di1[0],Di1[0],R3[0]);
+	      R3[1] = mul_add(Di1[1],Di1[1],R3[1]);
+	      R3[0] = mul_add(Di2[0],Di2[0],R3[0]);
+	      R3[1] = mul_add(Di2[1],Di2[1],R3[1]);
+	      M[0] = sqrt(R3[0]);
+	      M[1] = sqrt(R3[1]);
+	      R3[0] *= M[0];
+	      R3[1] *= M[1];
 	      
 	      // update acceleration
-	      S = VecWd(m[j]);
-	      T = VecWd(G);
-	      U = T/R3; U *= S;
-	      Ai0 = mul_add(Di0,U,Ai0);
-	      Ai1 = mul_add(Di1,U,Ai1);
-	      Ai2 = mul_add(Di2,U,Ai2);
+	      M[0] = VecWd(mj[0]);
+	      M[1] = VecWd(mj[1]);
+	      mj[0] = G*m[j+2]; // prefetch
+	      mj[0] = G*m[j+3]; // prefetch
+	      M[0] /= R3[0];
+	      M[1] /= R3[1];
+	      Ai0 = mul_add(Di0[0],M[0],Ai0);
+	      Ai1 = mul_add(Di1[0],M[0],Ai1);
+	      Ai2 = mul_add(Di2[0],M[0],Ai2);
+	      Ai0 = mul_add(Di0[1],M[1],Ai0);
+	      Ai1 = mul_add(Di1[1],M[1],Ai1);
+	      Ai2 = mul_add(Di2[1],M[1],Ai2);
+	    }
+
+	  // last interaction
+	    {
+	      // now we compute the interaction of W masses with the mass j
+	      // distance vectors
+	      Di0[0] = VecWd(xj0[0]); // hope that these are loaded now
+	      Di0[1] = VecWd(xj0[1]); // hope that these are loaded now
+	      Di1[0] = VecWd(xj1[0]);
+	      Di1[1] = VecWd(xj1[1]);
+	      Di2[0] = VecWd(xj2[0]);
+	      Di2[1] = VecWd(xj2[1]);
+
+	      Di0[0] -= Xi0;
+	      Di0[1] -= Xi0;
+	      Di1[0] -= Xi1;
+	      Di1[1] -= Xi1;
+	      Di2[0] -= Xi2;
+	      Di2[1] -= Xi2;
+
+	      // compute W distances^3
+	      R3[0] = VecWd(epsilon2);
+	      R3[1] = VecWd(epsilon2);
+	      R3[0] = mul_add(Di0[0],Di0[0],R3[0]);
+	      R3[1] = mul_add(Di0[1],Di0[1],R3[1]);
+	      R3[0] = mul_add(Di1[0],Di1[0],R3[0]);
+	      R3[1] = mul_add(Di1[1],Di1[1],R3[1]);
+	      R3[0] = mul_add(Di2[0],Di2[0],R3[0]);
+	      R3[1] = mul_add(Di2[1],Di2[1],R3[1]);
+	      M[0] = sqrt(R3[0]);
+	      M[1] = sqrt(R3[1]);
+	      R3[0] *= M[0];
+	      R3[1] *= M[1];
+	      
+	      // update acceleration
+	      M[0] = VecWd(mj[0]);
+	      M[1] = VecWd(mj[1]);
+	      M[0] /= R3[0];
+	      M[1] /= R3[1];
+	      Ai0 = mul_add(Di0[0],M[0],Ai0);
+	      Ai1 = mul_add(Di1[0],M[0],Ai1);
+	      Ai2 = mul_add(Di2[0],M[0],Ai2);
+	      Ai0 = mul_add(Di0[1],M[1],Ai0);
+	      Ai1 = mul_add(Di1[1],M[1],Ai1);
+	      Ai2 = mul_add(Di2[1],M[1],Ai2);
 	    }
 
 	  // write back accelerations
@@ -191,7 +309,7 @@ void leapfrog (int n, double dt, double* __restrict__ x, double* __restrict__ v,
   //acceleration(n,x,m,a);
   // acceleration_blocked(n,x,m,a);
   // acceleration_blocked_full(n,x,m,a);
-   acceleration_blocked_vectorized(n,x,m,a);
+  acceleration_blocked_vectorized<4>(n,x,m,a);
 
   // update velocity: 6n flops
   for (int i=0; i<3*n; i++)
@@ -304,7 +422,7 @@ int main (int argc, char** argv)
       std::cout << n << " is not a multiple of the block size " << B << std::endl;
       exit(1);
     }
-  if (B%W!=0)
+  if (B%8!=0)
     {
       std::cout << B << "=B is not a multiple of 4 " << std::endl;
       exit(1);
@@ -327,6 +445,14 @@ int main (int argc, char** argv)
   copy(X,x,n);
   copy(V,v,n);
 
+  std::cout << "memory in one tile acceleration kernel: " << (B*10)*8 << " bytes" << std::endl;
+  std::cout << "memory in acceleration kernel: " << n*7*8 << " bytes" << std::endl;
+  std::cout << "memory in leapfrog kernel: " << n*10*8 << " bytes" << std::endl;
+  std::cout << "memory total: " << n*16*8 << " bytes" << std::endl;
+  std::cout << "flops in one iteration: " << 19.0*n*n+12.0*n << std::endl;
+  std::cout << "total intensity: " << (13.0*n*(n-1.0)+12.0*n)/(n*10*8) << " flops/byte" << std::endl;
+  std::cout << "tile intensity: " << 19.0*B*B/(B*10*8) << " flops/byte" << std::endl;
+
   // initialize timestep and write first file
   std::cout << "step=" << k << " finalstep=" << timesteps << " time=" << t << " dt=" << dt << std::endl;
   auto start = get_time_stamp();
@@ -342,7 +468,8 @@ int main (int argc, char** argv)
           auto stop = get_time_stamp();
           double elapsed = get_duration_seconds(start,stop);
           double flop = mod*(13.0*n*(n-1.0)+12.0*n);
-          printf("%g seconds for %g ops = %g GFLOPS\n",elapsed,flop,flop/elapsed/1E9);
+          double flop2 = mod*(19.0*n*n+12.0*n);
+          printf("%g seconds for %g ops = %g (%g) GFLOPS \n",elapsed,flop,flop/elapsed/1E9,flop2/elapsed/1E9);
 
           printf("writing %s_%06d.vtk \n",basename,k/mod);                 
           sprintf(name,"%s_%06d.vtk",basename,k/mod);
