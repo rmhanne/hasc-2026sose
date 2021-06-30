@@ -336,8 +336,10 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
 	}
       
       // 1b) remaining blocks in first column
-      for (std::size_t i=K+M; i<n; ++i)
-	for (std::size_t k=K; k<K+M; ++k)
+#pragma omp parallel for firstprivate(n,A)
+      for (std::size_t I=K+M; I<n; I+=M)
+        for (std::size_t i=I; i<I+M; ++i)
+	  for (std::size_t k=K; k<K+M; ++k)
           {
             double lik = A[INDEX(i,k,n)]/A[INDEX(k,k,n)];
             A[INDEX(i,k,n)] = lik;
@@ -395,7 +397,7 @@ public:
     //ludecomp_blocked(n,B);
     //ludecomp_blocked_vectorized<8>(n,B);
     //ludecomp_blocked_vectorized_omp<8>(n,B);
-    ludecomp_blocked_vectorized_omp_pivot<4>(n,B);
+    ludecomp_blocked_vectorized_omp_pivot<8>(n,B);
   }
   // report number of operations
   double operations () const
