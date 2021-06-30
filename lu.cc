@@ -3,6 +3,9 @@
 #include <math.h>
 #include "time_experiment.hh"
 #include "vcl/vectorclass.h"
+#ifdef _OPENMP
+#include<omp.h> // headers for runtime if available
+#endif
 
 // row-major index mapping
 #define INDEX(i,j,n) ((i)*n+(j))
@@ -343,6 +346,7 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
           }
 
       // 2) Solve for U_KJ
+#pragma omp parallel for firstprivate(n,A)
       for (std::size_t J=K+M; J<n; J+=M)
         for (std::size_t i=0; i<M; ++i)
           for (std::size_t k=0; k<i; ++k)
@@ -359,7 +363,7 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
 	    }
       
       // 3) update S
-#pragma omp parallel for schedule (static) firstprivate(n,A) collapse (1)
+#pragma omp parallel for firstprivate(n,A) collapse (2)
       for (std::size_t I=K+M; I<n; I+=M)
 	for (std::size_t J=K+M; J<n; J+=M)
 	  matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
@@ -389,9 +393,9 @@ public:
     //ludecomp_pivot(n,B);
     //ludecomp_ijk(n,B);
     //ludecomp_blocked(n,B);
-    //ludecomp_blocked_vectorized<4>(n,B);
-    //ludecomp_blocked_vectorized_omp<4>(n,B);
-    ludecomp_blocked_vectorized_omp_pivot<4>(n,B);
+    //ludecomp_blocked_vectorized<8>(n,B);
+    //ludecomp_blocked_vectorized_omp<8>(n,B);
+    ludecomp_blocked_vectorized_omp_pivot<8>(n,B);
   }
   // report number of operations
   double operations () const
@@ -480,6 +484,8 @@ void test (int n, double A[])
 
 int main (int argc, char** argv)
 {
+  int P=omp_get_max_threads();
+
   // read discretization parameter
   int n = 240;
   if (argc!=2)
@@ -511,7 +517,7 @@ int main (int argc, char** argv)
   }
   
   // measure
-  std::cout << "N, perf" << std::endl;
+  std::cout << "N, P=" << P << std::endl;
   while (n<16000)
     {
       double *A = new (std::align_val_t(64)) double[n*n];
