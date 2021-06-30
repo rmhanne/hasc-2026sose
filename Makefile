@@ -63,6 +63,7 @@ all: scalar_product_v1\
      nbody_sycl\
      jacobi_seq\
      jacobi_tbb\
+     lu\
      hello_openmp\
      hello_mpi\
      hello_tbb\
@@ -91,6 +92,8 @@ matmul_omp: matmul_omp.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 matmul_omp_avx512: matmul_omp_avx512.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
+lu: lu.cc Makefile
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 transpose_v1: transpose_v1.cc Makefile
@@ -178,6 +181,7 @@ clean:
 	nbody_tbb_v2 \
 	jacobi_seq \
 	jacobi_tbb \
+	lu \
 	hello_openmp \
 	hello_mpi \
 	hello_tbb \
