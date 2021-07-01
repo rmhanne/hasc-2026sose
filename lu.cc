@@ -250,6 +250,7 @@ void ludecomp_blocked_vectorized_omp (int n, double A[])
   if (n%M!=0) exit(1);
   if (M%4!=0) exit(1);
   if (M%(3*W)!=0) exit(1);
+  using VecWd = typename SIMDSelector<W>::SIMDType;
 
   for (std::size_t K=0; K<n; K+=M)
     {
@@ -264,8 +265,10 @@ void ludecomp_blocked_vectorized_omp (int n, double A[])
           }
       
       // 1b) remaining blocks in first column
-      for (std::size_t i=K+M; i<n; ++i)
-	for (std::size_t k=K; k<K+M; ++k)
+#pragma omp parallel for if ((n-K-M)/M>4) schedule (static) firstprivate(n,A)
+      for (std::size_t I=K+M; I<n; I+=M)
+        for (std::size_t i=I; i<I+M; ++i)
+	  for (std::size_t k=K; k<K+M; ++k)
           {
             double lik = A[INDEX(i,k,n)]/A[INDEX(k,k,n)];
             A[INDEX(i,k,n)] = lik;
@@ -274,11 +277,21 @@ void ludecomp_blocked_vectorized_omp (int n, double A[])
           }
 
       // 2) Solve for U_KJ
+#pragma omp parallel for if ((n-K-M)/M>4) schedule (static) firstprivate(n,A)
       for (std::size_t J=K+M; J<n; J+=M)
         for (std::size_t i=0; i<M; ++i)
           for (std::size_t k=0; k<i; ++k)
-            for (std::size_t j=0; j<M; ++j)
-              A[INDEX(K+i,J+j,n)] -= A[INDEX(K+i,K+k,n)]*A[INDEX(K+k,J+j,n)];
+	    {
+	      VecWd Lik,Uij,Akj;
+	      Lik = VecWd(A[INDEX(K+i,K+k,n)]);
+	      for (std::size_t j=0; j<M; j+=W)
+		{
+		  Uij.load(&A[INDEX(K+i,J+j,n)]);
+		  Akj.load(&A[INDEX(K+k,J+j,n)]);
+		  Uij = nmul_add(Lik,Akj,Uij);
+		  Uij.store(&A[INDEX(K+i,J+j,n)]);
+		}
+	    }
                 
       // 3) update S
 #pragma omp parallel for schedule (static) firstprivate(n,A) collapse (2)
@@ -336,7 +349,7 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
 	}
       
       // 1b) remaining blocks in first column
-#pragma omp parallel for firstprivate(n,A)
+#pragma omp parallel for if ((n-K-M)/M>4) schedule (static) firstprivate(n,A)
       for (std::size_t I=K+M; I<n; I+=M)
         for (std::size_t i=I; i<I+M; ++i)
 	  for (std::size_t k=K; k<K+M; ++k)
@@ -348,7 +361,7 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
           }
 
       // 2) Solve for U_KJ
-#pragma omp parallel for firstprivate(n,A)
+#pragma omp parallel for if ((n-K-M)/M>4) schedule (static) firstprivate(n,A)
       for (std::size_t J=K+M; J<n; J+=M)
         for (std::size_t i=0; i<M; ++i)
           for (std::size_t k=0; k<i; ++k)
@@ -365,7 +378,7 @@ void ludecomp_blocked_vectorized_omp_pivot (int n, double A[])
 	    }
       
       // 3) update S
-#pragma omp parallel for firstprivate(n,A) collapse (2)
+#pragma omp parallel for if ((n-K-M)/M>4) schedule (static) firstprivate(n,A) collapse (2)
       for (std::size_t I=K+M; I<n; I+=M)
 	for (std::size_t J=K+M; J<n; J+=M)
 	  matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
