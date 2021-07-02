@@ -131,6 +131,11 @@ if (TARGET Eigen3::Eigen)
 endif (TARGET Eigen3::Eigen)
 endif (HASC_HAVE_MKL)
 
+if (OpenMP_FOUND)
+add_executable(lu lu.cc)
+target_link_libraries(lu PRIVATE OpenMP::OpenMP_CXX)
+endif (OpenMP_FOUND)
+
 
 # =============
 # Nbody Example
@@ -139,6 +144,8 @@ endif (HASC_HAVE_MKL)
 add_executable(nbody_vanilla nbody_vanilla.cc)
 
 add_executable(nbody_vectorized nbody_vectorized.cc)
+
+add_executable(nbody_vectorized_v2 nbody_vectorized_v2.cc)
 
 if (MPI_FOUND)
   add_executable(nbody_mpi nbody_mpi.cc)
