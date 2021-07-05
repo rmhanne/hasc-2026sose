@@ -504,24 +504,81 @@ void ludecomp_blocked2_vectorized_omp (int n, double A[])
       std::size_t remaining_blocks = (n-(K+M))/M; // should be divisible
       std::size_t superblocks = remaining_blocks/blockM;
       // superblocks
-#pragma omp parallel for schedule (static,1) firstprivate(n,A,superblocks)
+#pragma omp parallel for schedule (static) firstprivate(n,A,superblocks)
       for (std::size_t superblock=0; superblock<superblocks*superblocks; ++superblock)
 	{
 	  std::size_t superblocki = superblock/superblocks;
 	  std::size_t superblockj = superblock%superblocks;
 	  std::size_t II = K+M+superblocki*blockM*M;
 	  std::size_t JJ = K+M+superblockj*blockM*M;
+	  VecWd CC[4][3], BB[3], AA; // fits exactly 16 registers
 	  for (std::size_t I=II; I<II+blockM*M; I+=M)
 	    for (std::size_t J=JJ; J<JJ+blockM*M; J+=M)
-	      matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+	      {
+		//matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+		double* a=&A[INDEX(I,K,n)];
+		double* b=&A[INDEX(K,J,n)];
+		double* c=&A[INDEX(I,J,n)];
+		
+		// C is blocked into 4x(3*W) blocks
+		for (int s=0; s<M; s+=4) // loop over 4x3*W blocks of C within the tiles
+		  for (int t=0; t<M; t+=3*W)
+		    {
+		      // C_st is a 4x3*W block in 12 SIMD registers which is loaded now
+		      for (int p=0; p<4; ++p)
+			{
+			  // load store amortized over M/8 matrix multiplications
+			  CC[p][0].load(&c[INDEX(s+p,t,n)]);
+			  CC[p][1].load(&c[INDEX(s+p,t+W,n)]);
+			  CC[p][2].load(&c[INDEX(s+p,t+2*W,n)]);
+			}
+		      // C_st += A_sM*B_Mt where now A_sM is 4xM and B_Mt is Mx3*W
+		      for (int u=0; u<M; u+=1) // columns of A / rows of B
+			{
+			  // 3 loads of B now amortized over ... 12 fmas
+			  BB[0].load(&b[INDEX(u,t,n)]);
+			  BB[1].load(&b[INDEX(u,t+W,n)]);
+			  BB[2].load(&b[INDEX(u,t+2*W,n)]);
+            
+			  AA = VecWd(a[INDEX(s,u,n)]); // load-broadcast
+			  CC[0][0] = nmul_add(AA,BB[0],CC[0][0]);
+			  CC[0][1] = nmul_add(AA,BB[1],CC[0][1]);
+			  CC[0][2] = nmul_add(AA,BB[2],CC[0][2]);
+            
+			  AA = VecWd(a[INDEX(s+1,u,n)]); // load-broadcast
+			  CC[1][0] = nmul_add(AA,BB[0],CC[1][0]);
+			  CC[1][1] = nmul_add(AA,BB[1],CC[1][1]);
+			  CC[1][2] = nmul_add(AA,BB[2],CC[1][2]);
+            
+			  AA = VecWd(a[INDEX(s+2,u,n)]); // load-broadcast
+			  CC[2][0] = nmul_add(AA,BB[0],CC[2][0]);
+			  CC[2][1] = nmul_add(AA,BB[1],CC[2][1]);
+			  CC[2][2] = nmul_add(AA,BB[2],CC[2][2]);
+            
+			  AA = VecWd(a[INDEX(s+3,u,n)]); // load-broadcast
+			  CC[3][0] = nmul_add(AA,BB[0],CC[3][0]);
+			  CC[3][1] = nmul_add(AA,BB[1],CC[3][1]);
+			  CC[3][2] = nmul_add(AA,BB[2],CC[3][2]);
+			}
+		      // write back C
+		      for (int p=0; p<4; ++p)
+			{
+			  // load store amortized over M/8 matrix multiplications
+			  CC[p][0].store(&c[INDEX(s+p,t,n)]);
+			  CC[p][1].store(&c[INDEX(s+p,t+W,n)]);
+			  CC[p][2].store(&c[INDEX(s+p,t+2*W,n)]);
+			}
+		    }
+
+	      }
 	}
       // tail loops
       std::size_t n_end = K+M+superblocks*blockM*M;
-#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end)
+#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static) firstprivate(n,A,n_end)
       for (std::size_t I=K+M; I<n_end; I+=M)
         for (std::size_t J=n_end; J<n; J+=M)
           matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
-#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end)
+#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static) firstprivate(n,A,n_end)
       for (std::size_t I=n_end; I<n; I+=M)
         for (std::size_t J=K+M; J<n; J+=M)
           matmul_kernel<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
