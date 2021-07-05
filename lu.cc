@@ -9,7 +9,7 @@
 
 // row-major index mapping
 #define INDEX(i,j,n) ((i)*n+(j))
-const int M=64;
+const int M=80;
 
 // initialize all entries up to N
 void ludecomp (int n, double A[])
@@ -269,7 +269,7 @@ void matmul_kernel_4x4 (int n, double A[], double B[], double C[])
 // of nxn matrices stored in row-major layout
 // SIMD with vectorization of 4x3*W blocks
 template<size_t M, size_t W>
-void matmul_kernel_2x2 (int n, double A[], double B[], double C[])
+void matmul_kernel_4x2 (int n, double A[], double B[], double C[])
 {
   using VecWd = typename SIMDSelector<W>::SIMDType;
   VecWd CC[4][2], BB[2], AA; // fits 11 registers
@@ -567,18 +567,18 @@ void ludecomp_blocked2_vectorized_omp (int n, double A[])
 	  VecWd CC[4][3], BB[3], AA; // fits exactly 16 registers
 	  for (std::size_t I=II; I<II+blockM*M; I+=M)
 	    for (std::size_t J=JJ; J<JJ+blockM*M; J+=M)
-	      matmul_kernel_2x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+	      matmul_kernel_4x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
 	}
       // tail loops
       std::size_t n_end = K+M+superblocks*blockM*M;
 #pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static) firstprivate(n,A,n_end)
       for (std::size_t I=K+M; I<n_end; I+=M)
         for (std::size_t J=n_end; J<n; J+=M)
-          matmul_kernel_2x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+          matmul_kernel_4x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
 #pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static) firstprivate(n,A,n_end)
       for (std::size_t I=n_end; I<n; I+=M)
         for (std::size_t J=K+M; J<n; J+=M)
-          matmul_kernel_2x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+          matmul_kernel_4x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
     }
 }
 
@@ -684,7 +684,7 @@ public:
     //ludecomp_blocked(n,B);
     //ludecomp_blocked_vectorized<8>(n,B);
     //ludecomp_blocked_vectorized_omp<4>(n,B);
-    ludecomp_blocked2_vectorized_omp<4,2>(n,B);
+    ludecomp_blocked2_vectorized_omp<8,4>(n,B);
     //ludecomp_blocked2_vectorized_omp_avx512<4,5>(n,B);
     //ludecomp_blocked_vectorized_omp_pivot<4>(n,B);
   }
