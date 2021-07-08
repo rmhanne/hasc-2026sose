@@ -9,7 +9,7 @@
 
 // row-major index mapping
 #define INDEX(i,j,n) ((i)*n+(j))
-const int M=80;
+const int M=120;
 
 // initialize all entries up to N
 void ludecomp (int n, double A[])
@@ -730,9 +730,11 @@ template<size_t W, size_t blockM>
 void ludecomp_blocked2_vectorized_omp_avx512 (int n, double A[])
 {
   if (n%M!=0) exit(1);
-  if (M%8!=0) exit(1);
-  if (M%(2*W)!=0) exit(1);
+  if (M%4!=0) exit(1);
+  if (M%(5*W)!=0) exit(1);
   using VecWd = typename SIMDSelector<W>::SIMDType;
+
+//  std::cout << "STARTING LU decomposition" << std::endl;
 
   for (std::size_t K=0; K<n; K+=M)
     {
@@ -774,10 +776,11 @@ void ludecomp_blocked2_vectorized_omp_avx512 (int n, double A[])
                   Uij.store(&A[INDEX(K+i,J+j,n)]);
                 }
             }
-                
+               
       // 3) update S
       std::size_t remaining_blocks = (n-(K+M))/M; // should be divisible
       std::size_t superblocks = remaining_blocks/blockM;
+//      std::cout << "STEP 3) remaining_blocks=" << remaining_blocks << " superblocks=" << superblocks << std::endl;
       // superblocks
 #pragma omp parallel for schedule (static,1) firstprivate(n,A,superblocks)
       for (std::size_t superblock=0; superblock<superblocks*superblocks; ++superblock)
@@ -786,25 +789,26 @@ void ludecomp_blocked2_vectorized_omp_avx512 (int n, double A[])
 	  std::size_t superblockj = superblock%superblocks;
 	  std::size_t II = K+M+superblocki*blockM*M;
 	  std::size_t JJ = K+M+superblockj*blockM*M;
+		int rank = omp_get_thread_num();
 	  for (std::size_t I=II; I<II+blockM*M; I+=M)
 	    for (std::size_t J=JJ; J<JJ+blockM*M; J+=M)
 	      {
-		int rank = omp_get_thread_num();
-		if (rank==0)
-		  std::cout << "[" << II << "," << J << "]" << std::endl;
-		matmul_kernel_8x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+//		if (rank==0)
+//		  std::cout << rank << ":" << " superblock " << superblock << " [" << I << "," << J << "] " ;
+		matmul_kernel_4x5<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
 	      }
+//    if (rank==0) std::cout << std::endl;
 	}
       // tail loops
       std::size_t n_end = K+M+superblocks*blockM*M;
-#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end)
+#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end) collapse(2)
       for (std::size_t I=K+M; I<n_end; I+=M)
         for (std::size_t J=n_end; J<n; J+=M)
-          matmul_kernel_8x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
-#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end)
-      for (std::size_t I=n_end; I<n; I+=M)
-        for (std::size_t J=K+M; J<n; J+=M)
-          matmul_kernel_8x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+          matmul_kernel_4x5<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+#pragma omp parallel for if ((n_end-K-M)/M>4) schedule (static,1) firstprivate(n,A,n_end) collapse(2)
+      for (std::size_t J=K+M; J<n; J+=M)
+        for (std::size_t I=n_end; I<n; I+=M)
+          matmul_kernel_4x5<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
     }
 }
 
@@ -957,7 +961,7 @@ int main (int argc, char** argv)
   
   // measure
   std::cout << "N, P=" << P << std::endl;
-  while (n<16000)
+  while (n<17000)
     {
       double *A = new (std::align_val_t(64)) double[n*n];
       setupA(integrateK,alpha,beta,n,A);
