@@ -788,7 +788,12 @@ void ludecomp_blocked2_vectorized_omp_avx512 (int n, double A[])
 	  std::size_t JJ = K+M+superblockj*blockM*M;
 	  for (std::size_t I=II; I<II+blockM*M; I+=M)
 	    for (std::size_t J=JJ; J<JJ+blockM*M; J+=M)
-	      matmul_kernel_8x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+	      {
+		int rank = omp_get_thread_num();
+		if (rank==0)
+		  std::cout << "[" << II << "," << J << "]" << std::endl;
+		matmul_kernel_8x2<M,W>(n,&A[INDEX(I,K,n)],&A[INDEX(K,J,n)],&A[INDEX(I,J,n)]);
+	      }
 	}
       // tail loops
       std::size_t n_end = K+M+superblocks*blockM*M;
