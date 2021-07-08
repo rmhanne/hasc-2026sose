@@ -292,34 +292,39 @@ void matmul_kernel_4x5 (int n, double A[], double B[], double C[])
         for (int u=0; u<M; u+=1) // columns of A / rows of B
           {
             // 5 loads of B now amortized over ... 20 fmas
-            BB[0].load(&B[INDEX(u,t+0*W,n)]);
-            BB[1].load(&B[INDEX(u,t+1*W,n)]);
-            BB[2].load(&B[INDEX(u,t+2*W,n)]);
-            BB[3].load(&B[INDEX(u,t+3*W,n)]);
-            BB[4].load(&B[INDEX(u,t+4*W,n)]);
-            
-            AA = VecWd(A[INDEX(s,u,n)]); // load-broadcast
+            auto index_t = INDEX(u,t,n);
+            BB[0].load(&B[index_t]); index_t += W;
+            BB[1].load(&B[index_t]); index_t += W;
+            BB[2].load(&B[index_t]); index_t += W;
+            BB[3].load(&B[index_t]); index_t += W;
+            BB[4].load(&B[index_t]);
+           
+            auto index_s = INDEX(s,u,n); 
+            AA = VecWd(A[index_s]); // load-broadcast
+            index_s += n;
             CC[0][0] = nmul_add(AA,BB[0],CC[0][0]);
             CC[0][1] = nmul_add(AA,BB[1],CC[0][1]);
             CC[0][2] = nmul_add(AA,BB[2],CC[0][2]);
             CC[0][3] = nmul_add(AA,BB[3],CC[0][3]);
             CC[0][4] = nmul_add(AA,BB[4],CC[0][4]);
             
-            AA = VecWd(A[INDEX(s+1,u,n)]); // load-broadcast
+            AA = VecWd(A[index_s]); // load-broadcast
+            index_s += n;
             CC[1][0] = nmul_add(AA,BB[0],CC[1][0]);
             CC[1][1] = nmul_add(AA,BB[1],CC[1][1]);
             CC[1][2] = nmul_add(AA,BB[2],CC[1][2]);
             CC[1][3] = nmul_add(AA,BB[3],CC[1][3]);
             CC[1][4] = nmul_add(AA,BB[4],CC[1][4]);
             
-            AA = VecWd(A[INDEX(s+2,u,n)]); // load-broadcast
+            AA = VecWd(A[index_s]); // load-broadcast
+            index_s += n;
             CC[2][0] = nmul_add(AA,BB[0],CC[2][0]);
             CC[2][1] = nmul_add(AA,BB[1],CC[2][1]);
             CC[2][2] = nmul_add(AA,BB[2],CC[2][2]);
             CC[2][3] = nmul_add(AA,BB[3],CC[2][3]);
             CC[2][4] = nmul_add(AA,BB[4],CC[2][4]);
             
-            AA = VecWd(A[INDEX(s+3,u,n)]); // load-broadcast
+            AA = VecWd(A[index_s]); // load-broadcast
             CC[3][0] = nmul_add(AA,BB[0],CC[3][0]);
             CC[3][1] = nmul_add(AA,BB[1],CC[3][1]);
             CC[3][2] = nmul_add(AA,BB[2],CC[3][2]);
@@ -961,7 +966,7 @@ int main (int argc, char** argv)
   
   // measure
   std::cout << "N, P=" << P << std::endl;
-  while (n<17000)
+  //while (n<17000)
     {
       double *A = new (std::align_val_t(64)) double[n*n];
       setupA(integrateK,alpha,beta,n,A);
