@@ -396,7 +396,7 @@ void matmul_kernel_4x2 (int n, double A[], double B[], double C[])
 // of nxn matrices stored in row-major layout
 // SIMD with vectorization of 8x2*W blocks
 template<size_t M, size_t W>
-void matmul_kernel8x2 (int n, double A[], double B[], double C[])
+void matmul_kernel_8x2 (int n, double A[], double B[], double C[])
 {
   using VecWd = typename SIMDSelector<W>::SIMDType;
   VecWd CC[8][2], BB[2], AA[8]; // fits 30 registers
