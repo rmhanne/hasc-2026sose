@@ -41,6 +41,7 @@ all: scalar_product_v1\
      matmul_seq_v2\
      matmul_omp\
      matmul_omp_avx512\
+     matmul_omp_milan\
      pointer_chasing\
      transpose_v1\
      matvec_v1 \
@@ -91,6 +92,8 @@ matmul_seq_v2: matmul_seq_v2.cc Makefile
 matmul_omp: matmul_omp.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 matmul_omp_avx512: matmul_omp_avx512.cc Makefile
+	$(CC) $(CCFLAGS_AVX512) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
+matmul_omp_milan: matmul_omp_milan.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 lu: lu.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS)
@@ -112,8 +115,6 @@ nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 nbody_tbb_v2: nbody_tbb_v2.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
-nbody_sycl: nbody_sycl.cc Makefile nbody_generate.hh nbody_io.hh
-	$(DPCPP) $(CCFLAGS_DPCPP) -o $@ $< $(LFLAGS_DPCPP)
 nbody_omp: nbody_omp.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 nbody_mpi: nbody_mpi.cc Makefile nbody_generate.hh nbody_io.hh
@@ -147,6 +148,8 @@ hello_mpi: hello_mpi.cc Makefile
 hello_tbb: hello_tbb.cc Makefile
 	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
 hello_sycl: hello_sycl.cc Makefile
+	$(DPCPP) $(CCFLAGS_DPCPP) -o $@ $< $(LFLAGS_DPCPP)
+nbody_sycl: nbody_sycl.cc Makefile nbody_generate.hh nbody_io.hh
 	$(DPCPP) $(CCFLAGS_DPCPP) -o $@ $< $(LFLAGS_DPCPP)
 
 clean:
