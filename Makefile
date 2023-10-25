@@ -43,6 +43,7 @@ all: scalar_product_v1\
      scalar_product_ms\
      scalar_product_faster\
      matmul_seq_v1\
+     matmul_M2\
      matmul_seq_v2\
      matmul_omp\
      matmul_omp_avx512\
@@ -93,6 +94,8 @@ scalar_product_faster: scalar_product_faster.cc Makefile
 scalar_product_ms: scalar_product_ms.cc Makefile MessageSystem.hh Barrier.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_seq_v1: matmul_seq_v1.cc Makefile
+	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+matmul_M2: matmul_M2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_seq_v2: matmul_seq_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
