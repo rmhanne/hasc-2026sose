@@ -11,7 +11,7 @@ DPCPP = dpcpp
 #CCFLAGS = -O0
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
-CCFLAGSBASE2 = -std=c++17 -O3 
+CCFLAGSBASE2 = -std=c++17 -O3
 CCFLAGSBASE = -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
 CCFLAGSBASE3 = -std=c++17 -O1 -funroll-loops -fargument-noalias
 ARMFLAGS = -ftree-vectorize -march=armv8-a+dotprod -fopt-info-vec
@@ -31,7 +31,7 @@ LFLAGS = -lm -lpthread
 LFLAGS_OMP = -lm -lpthread
 LFLAGS_MPI = -lm -lpthread
 LFLAGS_TBB = -lm -ltbb
-LFLAGS_DPCPP = 
+LFLAGS_DPCPP =
 
 
 all: scalar_product_v1\
@@ -49,8 +49,9 @@ all: scalar_product_v1\
      matmul_omp_avx512\
      matmul_omp_milan\
      pointer_chasing\
-     transpose_v1\
-     transpose_M2\
+     transpose\
+		 transpose_avx\
+     transpose_neon\
      matvec_v1 \
      matvec_v2 \
      peterson\
@@ -98,7 +99,7 @@ matmul_seq_v1: matmul_seq_v1.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_M2: matmul_M2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
-transpose_M2: transpose_M2.cc Makefile
+transpose_neon: transpose_neon.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matmul_seq_v2: matmul_seq_v2.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
@@ -112,7 +113,11 @@ lu: lu.cc Makefile
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS)
 pointer_chasing: pointer_chasing.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
-transpose_v1: transpose_v1.cc Makefile
+transpose: transpose.cc Makefile
+	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+transpose_avx: transpose_avx.cc Makefile
+	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+transpose_neon: transpose_neon.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 matvec_v1: matvec_v1.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
@@ -179,7 +184,9 @@ clean:
         matmul_omp \
         matmul_omp_avx512 \
         pointer_chasing \
-        transpose_v1 \
+        transpose \
+				transpose_avx \
+				transpose_neon \
 	matvec_v1 \
 	matvec_v2 \
 	peterson \
