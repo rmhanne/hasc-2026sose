@@ -61,8 +61,8 @@ all: scalar_product_v1\
      packaged_task\
      producer_consumer\
      nbody_vanilla\
-     nbody_vectorized\
-     nbody_M2\
+     nbody_avx\
+     nbody_neon\
      nbody_vectorized_v2\
      nbody_mpi\
      nbody_mpi_nonblocking\
@@ -128,9 +128,9 @@ nbody_vanilla: nbody_vanilla.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGSBASE) -o $@ $< $(LFLAGS)
 nbody_vectorized: nbody_vectorized.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
-nbody_M2: nbody_M2.cc Makefile
+nbody_neon: nbody_neon.cc Makefile
 	$(CC) $(CCFLAGSBASE) -o $@ $< $(LFLAGS)
-nbody_vectorized_v2: nbody_vectorized_v2.cc Makefile nbody_generate.hh nbody_io.hh
+nbody_avx: nbody_avx.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS)
 nbody_vectorized_threaded: nbody_vectorized_threaded.cc Makefile nbody_generate.hh nbody_io.hh
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
