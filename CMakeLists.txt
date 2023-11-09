@@ -110,13 +110,13 @@ if (OpenMP_FOUND)
   target_link_libraries(matmul_omp_avx512 PRIVATE OpenMP::OpenMP_CXX)
 endif (OpenMP_FOUND)
 
-add_executable(transpose_v1 transpose_v1.cc)
-
 add_executable(matvec_v1 matvec_v1.cc)
 
 add_executable(matvec_v2 matvec_v2.cc)
 
-add_executable(transpose_vectorized transpose_vectorized.cc)
+add_executable(transpose transpose.cc)
+add_executable(transpose_avx transpose_avx.cc)
+add_executable(transpose_neon transpose_neon.cc)
 
 if (HASC_HAVE_MKL)
 find_package (Eigen3 3.3 NO_MODULE)
