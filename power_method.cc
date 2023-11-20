@@ -193,7 +193,7 @@ void lambda_max_par_thread(std::shared_ptr<GlobalContext> context, int rank)
   while (i <= 1000)
   {
     matvec(n, ibegin, iend, context->A, context->x, context->y); // parallel matvec y=Ax
-    context->barrier.wait2(rank);
+    context->barrier.wait(rank);
     if (rank == 0)
     {
       double mu = scalar_product(n, context->y, context->x); // Raleigh quotient
@@ -204,7 +204,7 @@ void lambda_max_par_thread(std::shared_ptr<GlobalContext> context, int rank)
       double norm = std::sqrt(scalar_product(n, context->y, context->y));
       copy_scale(n, 1.0 / norm, context->y, context->x);
     }
-    context->barrier.wait2(rank);
+    context->barrier.wait(rank);
     if (context->finished)
       break;
     i++;
