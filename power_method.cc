@@ -371,7 +371,7 @@ double time_matmul(int P, int n, double *A)
 
   // print result
   std::cout << "matmul duration=" << elapsed << " iterations=" << context->iterations << " time_per_iteration=" << elapsed / context->iterations << std::endl;
-  double bytes = (1.0 * n * n + 2.0 * n) * context->iterations;
+  double bytes = (1.0 * n * n + 2.0 * n)* 8 * context->iterations;
   std::cout << "bandwidth=" << bytes / 1e9 / elapsed << " GBytes/second" << std::endl;
   for (int i = 0; i < P; ++i)
     std::cout << i << ": duration=" << context->elapsed[i] << std::endl;
