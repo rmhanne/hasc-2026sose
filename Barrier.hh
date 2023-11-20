@@ -7,6 +7,7 @@
 #include <atomic>
 
 // barrier as a class
+// it implements two version: with mutexes and without mutexes
 class Barrier
 {
   int P; // number of threads in barrier
@@ -14,9 +15,8 @@ class Barrier
   std::vector<int> flag; // flag indicating waiting thread
   std::mutex mx; // mutex for use with the cvs
   std::vector<std::condition_variable> cv; // for waiting
-  std::atomic<int> acounter;
-  std::atomic<int> bcounter;
-  std::vector<int> direction;
+  std::atomic<int> acounter, bcounter; // two counters for mutex-free version
+  std::vector<int> direction; // store counting direction in mutex-free version
 
 public:
   // set up barrier for given number of threads
@@ -32,13 +32,13 @@ public:
     return P;
   }
 
+  // mutex-free version; do not mix with other version!
   void wait2 (int i)
   {
     if (direction[i]==0)
     {
       acounter++;
       while (acounter.load()<P) ;
-      direction[i] = 1-direction[i];
       bcounter++;
       while (bcounter.load()<P) ;
     }
@@ -46,13 +46,13 @@ public:
     {
       acounter--;
       while (acounter.load()>0) ;
-      direction[i] = 1-direction[i];
       bcounter--;
       while (bcounter.load()>0) ;
     }
+    direction[i] = 1-direction[i]; // reverse direction in next round
   }
 
-  // wait at barrier
+  // mutex-based version
   void wait (int i)
   {
     // sequential case
