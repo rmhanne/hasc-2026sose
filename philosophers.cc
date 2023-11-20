@@ -5,7 +5,7 @@
 #include <vector>
 
 const int N=5;
-const int cycles=5000; // # think/eat cycles
+const int cycles=50000; // # think/eat cycles
 
 // for first version
 std::vector<std::mutex> forks(N); // mutexes representing forks

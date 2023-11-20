@@ -4,6 +4,7 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 
 // barrier as a class
 class Barrier
@@ -13,15 +14,42 @@ class Barrier
   std::vector<int> flag; // flag indicating waiting thread
   std::mutex mx; // mutex for use with the cvs
   std::vector<std::condition_variable> cv; // for waiting
+  std::atomic<int> acounter;
+  std::atomic<int> bcounter;
+  std::vector<int> direction;
+
 public:
   // set up barrier for given number of threads
-  Barrier (int P_) : P(P_), count(0), flag(P_,0), cv(P_)
-  {}
+  Barrier (int P_) : P(P_), count(0), flag(P_,0), cv(P_), direction(P,0)
+  {
+    acounter.store(0);
+    bcounter.store(0);
+  }
 
   // get number of threads
   int nthreads ()
   {
     return P;
+  }
+
+  void wait2 (int i)
+  {
+    if (direction[i]==0)
+    {
+      acounter++;
+      while (acounter.load()<P) ;
+      direction[i] = 1-direction[i];
+      bcounter++;
+      while (bcounter.load()<P) ;
+    }
+    else
+    {
+      acounter--;
+      while (acounter.load()>0) ;
+      direction[i] = 1-direction[i];
+      bcounter--;
+      while (bcounter.load()>0) ;
+    }
   }
 
   // wait at barrier

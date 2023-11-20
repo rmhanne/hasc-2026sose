@@ -59,12 +59,11 @@ void consumer (int j)
       // wait until there is a task or all are finished
       cvpop.wait(ul,[]{return q.size()>0 || finished==m;});
       // we are here, when
-      // q.size()>0 && finished<m -> there is a task and more are coming
+      // q.size()>0 && finished<m -> there is a task and more may come
+      // q.size()>0 && finished==m -> there is at least one task
       // q.size()==0 && finished==m -> exit, we are done
-      // q.size()>0 && finished==m -> there are more tasks
-      // if there are no tasks and all are finished we are done
       if (q.size()==0 && finished==m)
-        break;
+        break; // this will release the mutex mx!
       // so there is at least one task, get it
       Task task = q.front();
       q.pop();
