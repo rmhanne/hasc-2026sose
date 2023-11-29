@@ -17,7 +17,7 @@
 // basic data type for position, velocity, acceleration
 const int M = 3;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B = 40;					 // block size for tiling
+const int B = 32;					 // block size for tiling
 
 /*const double gamma = 6.674E-11;*/
 const double G = 1.0;
@@ -25,6 +25,7 @@ const double epsilon2 = 1E-10;
 
 /** \brief compute acceleration vector from position and masses
  *
+ * Vanilla version
  * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
  * flops including 1 division and one square root
  */
@@ -50,6 +51,12 @@ void acceleration(int n, double *__restrict__ x, double *__restrict__ m, double 
 		}
 }
 
+/** \brief compute acceleration vector from position and masses
+ *
+ * Vanilla version blocked
+ * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
+ * flops including 1 division and one square root
+ */
 void acceleration_blocked(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
 {
 	for (int I = 0; I < n; I += B)
@@ -96,6 +103,12 @@ void acceleration_blocked(int n, double *__restrict__ x, double *__restrict__ m,
 	}
 }
 
+/** \brief compute acceleration vector from position and masses
+ *
+ * Vanilla version blocked nonsymmetric
+ * Executes n*n*19 flops
+ * flops including 1 division and one square root
+ */
 void acceleration_blocked_full(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
 {
 	for (int I = 0; I < n; I += B)
@@ -146,6 +159,12 @@ struct SIMDSelector<8>
 	typedef Vec8d SIMDType;
 };
 
+/** \brief compute acceleration vector from position and masses
+ *
+ * Vectorized version blocked: works on Wx1 masses; no transpose needed; but symmetry is not exploited
+ * Executes n*n*19 flops
+ * flops including 1 division and one square root
+ */
 template <size_t simd_width>
 void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
@@ -173,7 +192,7 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 			for (int J = 0; J < n; J += B)
 				for (int i = I; i < I + B; i += W)
 				{
-					// load data of mass i
+					// load data of four masses from i
 					Xi0.load(&x[i]);
 					Xi1.load(&x[n + i]);
 					Xi2.load(&x[2 * n + i]);
@@ -263,6 +282,12 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 	} // end parallel regions
 }
 
+/** \brief compute acceleration vector from position and masses
+ *
+ * Vectorized version blocked: works on Wx2 masses; no transpose needed; but symmetry is not exploited
+ * Executes n*n*19 flops
+ * flops including 1 division and one square root
+ */
 template <size_t simd_width>
 void acceleration_blocked_vectorized_interleaved(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
@@ -423,6 +448,294 @@ void acceleration_blocked_vectorized_interleaved(int n, double *__restrict__ x, 
 				aglobal[i] += a[i];
 		}
 	} // end parallel regions
+}
+
+/** \brief compute acceleration vector from position and masses
+ *
+ * Vectorized version blocked: works on WxW masses; symmetry is exploited; transpose for scalar factors needed
+ * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
+ * flops including 1 division and one square root
+ */
+void acceleration_4x4(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
+{
+	Vec4d X0, X1, X2;
+	Vec4d D0, D1, D2;
+	Vec4d R0, R1, R2, R3;
+	Vec4d A0, A1, A2, A3;
+	Vec4d S, Y;
+
+	for (int I = 0; I < n; I += B)
+	{
+		// diagonal block (I,I) is handled in the standard way exploiting symmetry
+		for (int i = I; i < I + B; i++)
+			for (int j = i + 1; j < I + B; j++)
+			{
+				double d0 = x[j] - x[i];
+				double d1 = x[n + j] - x[n + i];
+				double d2 = x[2 * n + j] - x[2 * n + i];
+				double r2 = d0 * d0 + d1 * d1 + d2 * d2 + epsilon2;
+				double r = sqrt(r2);
+				double invfact = G / (r * r2);
+				double factori = m[i] * invfact;
+				double factorj = m[j] * invfact;
+				a[i] += factorj * d0;
+				a[n + i] += factorj * d1;
+				a[2 * n + i] += factorj * d2;
+				a[j] -= factori * d0;
+				a[n + j] -= factori * d1;
+				a[2 * n + j] -= factori * d2;
+			}
+
+		// blocks J>I can also exploit symmetry but are full now
+		for (int J = I + B; J < n; J += B)
+			for (int i = I; i < I + B; i += 4)
+				for (int j = J; j < J + B; j += 4)
+				{
+					// compute interaction of 4x4 masses i,i+1,i+2,i+3 and j,j+1,j+1,j+3
+
+					// load positions of four particles starting at j
+					X0.load(&(x[j]));				 // x coordinates
+					X1.load(&(x[j + n]));		 // y coordinates
+					X2.load(&(x[j + 2 * n])); // z coordinates
+
+					// difference to mass i
+					D0 = Vec4d(x[i]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i + 2 * n]); // load broadcast for z-coordinate
+					D0 = X0-D0;				 // distance j,...-i, x-coordinate
+					D1 = X1-D1;				 // distance j,...-i, y-coordinate
+					D2 = X2-D2;				 // distance j,...-i, z-coordinate
+					A0 = Vec4d(epsilon2);			 // now compute squared distances
+					A0 = mul_add(D0,D0,A0);
+					A0 = mul_add(D1,D1,A0);
+					A0 = mul_add(D2,D2,A0); // now A0=(||xj-xi||^2, ||xj+1-xi||^2, ||xj+2-xi||^2, ||xj+3-xi||^2)
+					R0 = sqrt(A0);          // now R0=(||xj-xi||,   ||xj+1-xi||,   ||xj+2-xi||,   ||xj+3-xi||  )
+
+					// difference to mass i+1
+					D0 = Vec4d(x[i+1]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+1 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+1 + 2 * n]); // load broadcast for z-coordinate
+					D0 = X0-D0;				 // distance j,...-i, x-coordinate
+					D1 = X1-D1;				 // distance j,...-i, y-coordinate
+					D2 = X2-D2;				 // distance j,...-i, z-coordinate
+					A1 = Vec4d(epsilon2);			 // now compute squared distances
+					A1 = mul_add(D0,D0,A1);
+					A1 = mul_add(D1,D1,A1);
+					A1 = mul_add(D2,D2,A1); // now A1=(||xj-xi+1||^2, ||xj+1-xi+1||^2, ||xj+2-xi+1||^2, ||xj+3-xi+1||^2)
+					R1 = sqrt(A1);          // now R1=(||xj-xi+1||,   ||xj+1-xi+1||,   ||xj+2-xi+1||,   ||xj+3-xi+1||  )
+
+					// difference to mass i+2
+					D0 = Vec4d(x[i+2]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+2 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+2 + 2 * n]); // load broadcast for z-coordinate
+					D0 = X0-D0;				 // distance j,...-i, x-coordinate
+					D1 = X1-D1;				 // distance j,...-i, y-coordinate
+					D2 = X2-D2;				 // distance j,...-i, z-coordinate
+					A2 = Vec4d(epsilon2);			 // now compute squared distances
+					A2 = mul_add(D0,D0,A2);
+					A2 = mul_add(D1,D1,A2);
+					A2 = mul_add(D2,D2,A2); // now A2=(||xj-xi+2||^2, ||xj+1-xi+2||^2, ||xj+2-xi+2||^2, ||xj+3-xi+2||^2)
+					R2 = sqrt(A2);          // now R2=(||xj-xi+2||,   ||xj+1-xi+2||,   ||xj+2-xi+2||,   ||xj+3-xi+2||  )
+
+					// difference to mass i+3
+					D0 = Vec4d(x[i+3]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+3 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+3 + 2 * n]); // load broadcast for z-coordinate
+					D0 = X0-D0;				 // distance j,...-i, x-coordinate
+					D1 = X1-D1;				 // distance j,...-i, y-coordinate
+					D2 = X2-D2;				 // distance j,...-i, z-coordinate
+					A3 = Vec4d(epsilon2);			 // now compute squared distances
+					A3 = mul_add(D0,D0,A3);
+					A3 = mul_add(D1,D1,A3);
+					A3 = mul_add(D2,D2,A3); // now A3=(||xj-xi+3||^2, ||xj+1-xi+3||^2, ||xj+2-xi+3||^2, ||xj+3-xi+3||^2)
+					R3 = sqrt(A3);          // now R3=(||xj-xi+3||,   ||xj+1-xi+3||,   ||xj+2-xi+3||,   ||xj+3-xi+3||  )
+
+					// now we proceed to compute the scalar factors s_{i,j} = G/r_{i,j}^3
+					D0 = Vec4d(G);		// load broadcast for G, D0 is unused
+					A0 = A0*R0; // Ai contains third powers
+					A1 = A1*R1;
+					A2 = A2*R2;
+					A3 = A3*R3;
+					R0 = D0/A0; // R0 = ( s_{j,i}   ; s_{j+1,i}  ; s_{j+2,i}  ; s_{j+3,i} )
+					R1 = D0/A1; // R1 = ( s_{j,i+1} ; s_{j+1,i+1}; s_{j+2,i+1}; s_{j+3,i+1} )
+					R2 = D0/A2; // R2 = ( s_{j,i+2} ; s_{j+1,i+2}; s_{j+2,i+2}; s_{j+3,i+2} )
+					R3 = D0/A3; // R3 = ( s_{j,i+3} ; s_{j+1,i+3}; s_{j+2,i+3}; s_{j+3,i+3} )
+
+
+					// now we update the accelerations of the 2*4 masses
+
+					// FIRST contribution to acceleration of masses j,j+1,j+2,j+3 *from* masses i,i+1,i+2,i+3
+					// load acceleration of masses j,j+1
+					A0.load(&(a[j]));				 // x coordinates
+					A1.load(&(a[j + n]));		 // y coordinates
+					A2.load(&(a[j + 2 * n])); // z coordinates
+
+					// contribution from mass i
+					// X* still contains the positions of j,j+1,j+2,j+3. But we need to recompute the differences
+					D0 = Vec4d(x[i]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i + 2 * n]); // load broadcast for z-coordinate
+					D0 -= X0;	// distance i-j,... x-coordinate
+					D1 -= X1;	// distance i-j,... y-coordinate
+					D2 -= X2;	// distance i-j,... z-coordinate
+					// build scalar factors
+					S = Vec4d(m[i]);
+					S *= R0;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass i+1
+					// X* still contains the positions of j,j+1,j+2,j+3. But we need to recompute the differences
+					D0 = Vec4d(x[i+1]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+1 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+1 + 2 * n]); // load broadcast for z-coordinate
+					D0 -= X0;	// distance i-j,... x-coordinate
+					D1 -= X1;	// distance i-j,... y-coordinate
+					D2 -= X2;	// distance i-j,... z-coordinate
+					// build scalar factors
+					S = Vec4d(m[i+1]);
+					S *= R1;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass i+2
+					// X* still contains the positions of j,j+1,j+2,j+3. But we need to recompute the differences
+					D0 = Vec4d(x[i+2]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+2 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+2 + 2 * n]); // load broadcast for z-coordinate
+					D0 -= X0;	// distance i-j,... x-coordinate
+					D1 -= X1;	// distance i-j,... y-coordinate
+					D2 -= X2;	// distance i-j,... z-coordinate
+					// build scalar factors
+					S = Vec4d(m[i+2]);
+					S *= R2;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass i+3
+					// X* still contains the positions of j,j+1,j+2,j+3. But we need to recompute the differences
+					D0 = Vec4d(x[i+3]);				 // load broadcast for x-coordinate
+					D1 = Vec4d(x[i+3 + n]);		 // load broadcast for y-coordinate
+					D2 = Vec4d(x[i+3 + 2 * n]); // load broadcast for z-coordinate
+					D0 -= X0;	// distance i-j,... x-coordinate
+					D1 -= X1;	// distance i-j,... y-coordinate
+					D2 -= X2;	// distance i-j,... z-coordinate
+					// build scalar factors
+					S = Vec4d(m[i+3]);
+					S *= R3;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// store acceleration of masses j,j+1,j+2,j+3
+					A0.store(&(a[j]));				 // x coordinates
+					A1.store(&(a[j + n]));		 // y coordinates
+					A2.store(&(a[j + 2 * n])); // z coordinates
+
+
+					// SECOND contribution to acceleration of masses i,i+1,i+2,i+3 *from* masses j, j+1, j+2, j+3
+					// load coordinates of i,i+1,i+2,i+3 in SIMD register; we did not have this before
+					X0.load(&(x[i]));					// x coordinates
+					X1.load(&(x[i + n]));			// y coordinates
+					X2.load(&(x[i + 2 * n])); // z coordinates
+					// load acceleration
+					A0.load(&(a[i]));				 // x coordinates
+					A1.load(&(a[i + n]));		 // y coordinates
+					A2.load(&(a[i + 2 * n])); // z coordinates
+
+					// contribution from mass j
+					D0 = Vec4d(x[j]);				  // load broadcast for x-coordinate
+					D1 = Vec4d(x[j + n]);		  // load broadcast for y-coordinate
+					D2 = Vec4d(x[j + 2 * n]); // load broadcast for z-coordinate
+					// build difference vectors
+					D0 -= X0; // distance j-i,i+1,i+2,i+3 x-coordinate
+					D1 -= X1; // distance j-i,i+1,i+2,i+3 y-coordinate
+					D2 -= X2; // distance j-i,i+1,i+2,i+3 z-coordinate
+					// build scalar factors: we need a transpose here
+					// now the transpose; unused registers: A3,Y
+		  		A3 = blend4<0,4,V_DC,V_DC>(R0,R1); // scalar factor column j
+		  		Y = blend4<V_DC,V_DC,0,4>(R2,R3); // scalar factor column j
+					S = blend4<0,1,6,7>(A3,Y);
+					Y = Vec4d(m[j]);
+					S *= Y;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass j+1
+					D0 = Vec4d(x[j+1]);				  // load broadcast for x-coordinate
+					D1 = Vec4d(x[j+1 + n]);		  // load broadcast for y-coordinate
+					D2 = Vec4d(x[j+1 + 2 * n]); // load broadcast for z-coordinate
+					// build difference vectors
+					D0 -= X0; // distance j+1-i,i+1,i+2,i+3 x-coordinate
+					D1 -= X1; // distance j+1-i,i+1,i+2,i+3 y-coordinate
+					D2 -= X2; // distance j+1-i,i+1,i+2,i+3 z-coordinate
+					// build scalar factors: we need a transpose here
+					// now the transpose; unused registers: A3,Y
+		  		A3 = blend4<1,5,V_DC,V_DC>(R0,R1); // scalar factor column j
+		  		Y = blend4<V_DC,V_DC,1,5>(R2,R3); // scalar factor column j
+					S = blend4<0,1,6,7>(A3,Y);
+					Y = Vec4d(m[j+1]);
+					S *= Y;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass j+2
+					D0 = Vec4d(x[j+2]);				  // load broadcast for x-coordinate
+					D1 = Vec4d(x[j+2 + n]);		  // load broadcast for y-coordinate
+					D2 = Vec4d(x[j+2 + 2 * n]); // load broadcast for z-coordinate
+					// build difference vectors
+					D0 -= X0; // distance j+2-i,i+1,i+2,i+3 x-coordinate
+					D1 -= X1; // distance j+2-i,i+1,i+2,i+3 y-coordinate
+					D2 -= X2; // distance j+2-i,i+1,i+2,i+3 z-coordinate
+					// build scalar factors: we need a transpose here
+					// now the transpose; unused registers: A3,Y
+		  		A3 = blend4<2,6,V_DC,V_DC>(R0,R1); // scalar factor column j
+		  		Y = blend4<V_DC,V_DC,2,6>(R2,R3); // scalar factor column j
+					S = blend4<0,1,6,7>(A3,Y);
+					Y = Vec4d(m[j+2]);
+					S *= Y;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// contribution from mass j+3
+					D0 = Vec4d(x[j+3]);				  // load broadcast for x-coordinate
+					D1 = Vec4d(x[j+3 + n]);		  // load broadcast for y-coordinate
+					D2 = Vec4d(x[j+3 + 2 * n]); // load broadcast for z-coordinate
+					// build difference vectors
+					D0 -= X0; // distance j+3-i,i+1,i+2,i+3 x-coordinate
+					D1 -= X1; // distance j+3-i,i+1,i+2,i+3 y-coordinate
+					D2 -= X2; // distance j+3-i,i+1,i+2,i+3 z-coordinate
+					// build scalar factors: we need a transpose here
+					// now the transpose; unused registers: A3,Y
+		  		A3 = blend4<3,7,V_DC,V_DC>(R0,R1); // scalar factor column j
+		  		Y = blend4<V_DC,V_DC,3,7>(R2,R3); // scalar factor column j
+					S = blend4<0,1,6,7>(A3,Y);
+					Y = Vec4d(m[j+3]);
+					S *= Y;
+					// update
+					A0 = mul_add(S,D0,A0);
+					A1 = mul_add(S,D1,A1);
+					A2 = mul_add(S,D2,A2);
+
+					// store acceleration of masses i,i+1,i+2,i+3
+					A0.store(&(a[i]));
+					A1.store(&(a[i + n]));
+					A2.store(&(a[i + 2 * n]));
+				}
+	}
 }
 
 #ifdef __AVX512F__
@@ -664,10 +977,11 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 
 	// compute new acceleration: n*(n-1)*13 flops
 	// acceleration(n,x,m,a);
+	acceleration_4x4(n,x,m,a);
 	// acceleration_blocked(n,x,m,a);
 	// acceleration_blocked_full(n,x,m,a);
 	// acceleration_blocked_vectorized<2>(n,x,m,a);
-	acceleration_blocked_vectorized_interleaved<4>(n, x, m, a);
+	// acceleration_blocked_vectorized_interleaved<4>(n, x, m, a);
 	// acceleration_blocked_vectorized_512(n,x,m,a);
 
 	// update velocity: 6n flops
