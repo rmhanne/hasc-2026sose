@@ -294,14 +294,16 @@ int main (int argc, char** argv)
 // read parameters
   int n=1024;
   int iterations=1000;
-  if (argc!=3)
+  int P=1; 
+  if (argc!=4)
     {
-      std::cout << "usage: ./jacobi_vanilla <size> <iterations>"
+      std::cout << "usage: ./jacobi_vanilla <size> <iterations> <cores>"
                 << std::endl;
       exit(1);
     }
   sscanf(argv[1],"%d",&n);
   sscanf(argv[2],"%d",&iterations);
+  sscanf(argv[3],"%d",&P);
 
   // check sizes
   if (K%2==1)
@@ -314,12 +316,16 @@ int main (int argc, char** argv)
       std::cout << "K must divide n-2, K=" << K << " n-2=" << n-2 << std::endl;
       exit(1);
     }
+  int multiplier = K/2+1;
+  iterations = (iterations/multiplier)*multiplier + std::min(1,iterations%multiplier)*multiplier;
   if (iterations%(K/2+1)!=0)
     {
       std::cout << "iterations must be a multiple of (K/2+1), K=" << K << " iterations=" << iterations << std::endl;
       exit(1);
     }
   
+  oneapi::tbb::global_control gc(oneapi::tbb::global_control::max_allowed_parallelism,P);
+
   // get global context shared by aall threads
   auto context = std::make_shared<GlobalContext>(n);
   context->iterations=iterations;

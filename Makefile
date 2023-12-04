@@ -12,7 +12,7 @@ DPCPP = dpcpp
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
 CCFLAGSBASE2 = -std=c++17 -O3
-CCFLAGSBASE = -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
+CCFLAGSBASE = -I/opt/local/include -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
 ARMFLAGS = -ftree-vectorize -march=armv8-a+dotprod -fopt-info-vec
 SSE2FLAGS = -ftree-vectorize -msse2 -fopt-info-vec
 AVX2FLAGS = -ftree-vectorize -mavx2 -mfma -fopt-info-vec
@@ -29,7 +29,7 @@ CCFLAGS_DPCPP = -Ofast -fargument-noalias
 LFLAGS = -lm -lpthread
 LFLAGS_OMP = -lm -lpthread
 LFLAGS_MPI = -lm -lpthread
-LFLAGS_TBB = -lm -ltbb
+LFLAGS_TBB = -lm -L/opt/local/lib -ltbb
 LFLAGS_DPCPP =
 
 
@@ -72,6 +72,7 @@ all: scalar_product_v1\
      nbody_tbb_v2\
      nbody_sycl\
      jacobi_seq\
+     jacobi_omp\
      jacobi_tbb\
      lu\
      hello_openmp\
@@ -160,6 +161,8 @@ producer_consumer: producer_consumer.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
 jacobi_seq: jacobi_seq.cc Makefile
 	$(CC) $(CCFLAGS) -o $@ $< $(LFLAGS)
+jacobi_omp: jacobi_omp.cc Makefile
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ $< $(LFLAGS_OMP)
 jacobi_tbb: jacobi_tbb.cc Makefile
 	$(CCTBB) $(CCFLAGS) -o $@ $< $(LFLAGS_TBB)
 hello_openmp: hello_openmp.cc Makefile

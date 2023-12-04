@@ -6,11 +6,11 @@
 #include <stdio.h>
 #include "time_experiment.hh"
 
+#define HAVE_NEON 1
+
 #ifdef HAVE_VCL
 #include "vcl/vectorclass.h"
 #endif
-
-#define HAVE_NEON 1
 
 #ifdef HAVE_NEON
 #include <arm_neon.h>
