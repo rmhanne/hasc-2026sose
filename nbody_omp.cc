@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "nbody_io.hh"
 #include "nbody_generate.hh"
@@ -212,6 +213,8 @@ void acceleration_blocked_buffered(int n, double *__restrict__ x, double *__rest
  */
 void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
+	std::vector<std::mutex> mutexes(n / B); // one mutex per block
+
 #pragma omp parallel firstprivate(n, x, m, aglobal)
 	{
 		// make private acceleration vectors to accumulate to
@@ -275,8 +278,9 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 						aJ[j - J + 2 * B] -= factori * d2;
 					}
 
-					// update accelerations for block J
-#pragma omp critical
+				// update accelerations for block J
+				// #pragma omp critical
+				std::lock_guard<std::mutex> ul{mutexes[J / B]};
 				{
 					for (int j = 0; j < B; ++j)
 						aglobal[J + j] += aJ[j];
@@ -287,7 +291,8 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 				}
 			} // end J loop
 				// update accelerations of block I
-#pragma omp critical
+			// #pragma omp critical
+			std::lock_guard<std::mutex> ul{mutexes[I / B]};
 			{
 				for (int i = 0; i < B; ++i)
 					aglobal[I + i] += aI[i];
@@ -545,7 +550,7 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 {
 	// update position: 6n flops
 	for (int i = 0; i < 3 * n; i++)
-		x[i] += dt * v[i]; 
+		x[i] += dt * v[i];
 
 	// save and clear acceleration
 	for (int i = 0; i < 3 * n; i++)
@@ -553,8 +558,8 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 
 	// compute new acceleration: n*(n-1)*13 flops
 	// acceleration(n, x, m, a);
-	//acceleration_blocked(n, x, m, a);
-	//acceleration_blocked_buffered(n, x, m, a);
+	// acceleration_blocked(n, x, m, a);
+	// acceleration_blocked_buffered(n, x, m, a);
 	acceleration_blocked_omp(n, x, m, a);
 	// acceleration_blocked_vectorized(n, x, m, a);
 
@@ -695,6 +700,8 @@ int main(int argc, char **argv)
 	// copy initial values
 	copy(X, x, n);
 	copy(V, v, n);
+
+	//std::cout << "size of mutex is " << sizeof(std::mutex) << std::endl;
 
 	// initialize timestep and write first file
 	std::cout << "step=" << k << " finalstep=" << timesteps << " time=" << t << " dt=" << dt << std::endl;
