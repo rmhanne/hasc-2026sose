@@ -2,7 +2,7 @@
 #CC = g++-mp-9
 # CC = g++-8
 CC = g++
-CCMPI = mpicxx
+CCMPI = mpicxx-mpich-gcc12 
 CCTBB = g++
 DPCPP = dpcpp
 
