@@ -31,10 +31,10 @@
 // basic data type for position, velocity, acceleration
 const int M = 3;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B = 256;				 // block size for tiling
+const int B = 128;				 // block size for tiling
 
-const double G = 6.674E-11;
-// const double G = 1.0;
+// const double G = 6.674E-11;
+const double G = 1.0;
 const double epsilon2 = 1E-10;
 
 /** \brief compute acceleration vector from position and masses (vanilla sequential version)
@@ -661,9 +661,9 @@ int main(int argc, char **argv)
 		x = new (std::align_val_t(64)) double3[n];
 		v = new (std::align_val_t(64)) double3[n];
 		m = new (std::align_val_t(64)) double[n];
-		// plummer(n,17,x,v,m);
+		//plummer(n, 17, x, v, m);
 		two_plummer(n, 17, x, v, m);
-		// cube(n,17,1.0,100.0,0.1,x,v,m);
+		//  cube(n,17,1.0,100.0,0.1,x,v,m);
 		std::cout << "initialized " << n << " bodies" << std::endl;
 		k = 0;
 		t = 0.0;
@@ -700,8 +700,11 @@ int main(int argc, char **argv)
 	// copy initial values
 	copy(X, x, n);
 	copy(V, v, n);
+	auto ekin0 = ekin(n, m, v);
+	auto epot0 = epot(n, m, x, G);
+	std::cout << "ekin=" << ekin0 << " epot=" << epot0 << " etot=" << ekin0 + epot0 << std::endl;
 
-	//std::cout << "size of mutex is " << sizeof(std::mutex) << std::endl;
+	// std::cout << "size of mutex is " << sizeof(std::mutex) << std::endl;
 
 	// initialize timestep and write first file
 	std::cout << "step=" << k << " finalstep=" << timesteps << " time=" << t << " dt=" << dt << std::endl;
@@ -733,6 +736,11 @@ int main(int argc, char **argv)
 			copy(v, V, n);
 			write_vtk_file_double(file, n, x, v, m, t, dt);
 			fclose(file);
+
+			auto ekin1 = ekin(n, m, v);
+			auto epot1 = epot(n, m, x, G);
+			std::cout << "ekin=" << ekin1 << " epot=" << epot1 << " etot=" << ekin1 + epot1 
+			<< " ratio=" << (ekin1+epot1)/(ekin0+epot0) << std::endl;
 
 			start = get_time_stamp();
 		}
