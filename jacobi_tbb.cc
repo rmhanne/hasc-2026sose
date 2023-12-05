@@ -57,9 +57,10 @@ void jacobi_vanilla (std::shared_ptr<GlobalContext> context)
 // the task-based version
 //=================================================
 
-// standard function_node for Lambda
-using Lambda_node = oneapi::tbb::flow::function_node<
-  std::tuple<int,int>,int>;
+// function_node type for Lambda; the tow template parameters are input and output type and must match the operator() of the body
+using Lambda_node = oneapi::tbb::flow::function_node<std::tuple<int,int>,int>;
+
+// a class defining the computation done by the Lambda_node
 template<int K>
 class Lambda
 {
