@@ -93,6 +93,8 @@ double plummer(int n, long int seed,
     t[2] += m[i] * v[i][2];
   }
   if (verbosity > 0)
+    std::cout << "maximal radius is " << maxr << std::endl;
+  if (verbosity > 0)
     printf("center of mass: %g %g %g\n", s[0], s[1], s[2]);
   for (i = 0; i < n; i++)
   {
@@ -148,7 +150,9 @@ void two_plummer(int n, long int seed,
     v[i + n / 2][1] = v[i][1] + V;
     v[i + n / 2][2] = v[i][2];
   }
-  // recenter
+  // make a second plummer in the first half
+  radius = plummer(n / 2, seed * 13, x, v, m, verbosity);
+    // recenter
   double s[3] = {0.0, 0.0, 0.0};
   double t[3] = {0.0, 0.0, 0.0};
   for (int i = 0; i < n; i++)
@@ -169,6 +173,31 @@ void two_plummer(int n, long int seed,
     v[i][1] -= t[1];
     v[i][2] -= t[2];
   }
+}
+
+template <typename doubleX>
+double ekin(int n, double m[], doubleX v[])
+{
+  double sum = 0.0;
+  for (int i = 0; i < n; i++)
+    sum += m[i] * (v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2]);
+  return 0.5*sum;
+}
+
+template <typename doubleX>
+double epot(int n, double m[], doubleX x[], double gravity_constant)
+{
+  double sum = 0.0;
+  for (int i = 0; i < n; i++)
+    for (int j = i+1; j < n; j++)
+    {
+      doubleX d;
+      d[0] = x[i][0]-x[j][0];
+      d[1] = x[i][1]-x[j][1];
+      d[2] = x[i][2]-x[j][2];
+      sum += m[i]*m[j]/sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    }
+  return -sum*gravity_constant;
 }
 
 #endif
