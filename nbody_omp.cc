@@ -225,7 +225,7 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 		aJ = new (std::align_val_t(64)) double[3 * B];
 
 		// parallel loop over block rows with *cyclic* partitioning
-#pragma omp for schedule(static, 1)
+#pragma omp for schedule(dynamic, 1)
 		for (int I = 0; I < n; I += B)
 		{
 			// clear accelerations for whole block row
@@ -332,7 +332,7 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 		aJ = new (std::align_val_t(64)) double[3 * B];
 
 		// parallel loop over block rows with cyclic partitioning
-#pragma omp for schedule(static, 1)
+#pragma omp for schedule(dynamic, 1)
 		for (int I = 0; I < n; I += B)
 		{
 			// clear accelerations for whole block row
