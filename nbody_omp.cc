@@ -561,7 +561,7 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 	// acceleration_blocked(n, x, m, a);
 	// acceleration_blocked_buffered(n, x, m, a);
 	acceleration_blocked_omp(n, x, m, a);
-	// acceleration_blocked_vectorized(n, x, m, a);
+  //acceleration_blocked_vectorized(n, x, m, a);
 
 	// update velocity: 6n flops
 	for (int i = 0; i < 3 * n; i++)
