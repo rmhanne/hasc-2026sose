@@ -39,16 +39,44 @@ struct GlobalContext
   }
 };
 
+double defect_norm(int n, double *__restrict__ u)
+{
+  double sum = 0.0;
+  for (int i1 = 1; i1 < n - 1; i1++)
+    for (int i0 = 1; i0 < n - 1; i0++)
+    {
+      double d = 4.0 * u[i1 * n + i0] - (u[i1 * n + i0 - n] + u[i1 * n + i0 - 1] + u[i1 * n + i0 + 1] + u[i1 * n + i0 + n]);
+      sum += d * d;
+    }
+  return sqrt(sum);
+}
+
 void jacobi_vanilla_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
 {
+  auto d0 = defect_norm(n,uold);
+  auto last=d0;
+  int iter;
+
   // do iterations
-  for (int i = 0; i < iterations; i++)
+  for (int i = 1; i <= iterations; i++)
   {
     for (int i1 = 1; i1 < n - 1; i1++)
       for (int i0 = 1; i0 < n - 1; i0++)
         unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
     std::swap(uold, unew);
+    if (i%10==0)
+    {
+      auto d = defect_norm(n,uold);
+      //std::cout << "iter=" << i << " d=" << d << " rho=" << d/last << std::endl;
+      last = d;
+      if (d<1e-4*d0) 
+      {
+        iter = i;
+        break;
+      }
+    }
   }
+  std::cout << "n=" << n << " iter=" << iter << std::endl;
 }
 
 void jacobi_vanilla(std::shared_ptr<GlobalContext> context)
@@ -656,6 +684,18 @@ int main(int argc, char **argv)
                ? 0.0
                : ((double)(i0 + i1)) / n; };
 
+  // warmup
+  for (int i1 = 0; i1 < n; i1++)
+    for (int i0 = 0; i0 < n; i0++)
+      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
+  auto start = get_time_stamp();
+  jacobi_vanilla(context);
+  auto stop = get_time_stamp();
+  double elapsed = get_duration_seconds(start, stop);
+  double updates = context->iterations;
+  updates *= (n - 2) * (n - 2);
+  return 0;
+
   std::cout << "N,";
   std::cout << "vanilla,";
   std::cout << "blocked,";
@@ -669,17 +709,6 @@ int main(int argc, char **argv)
   std::cout << std::endl;
   std::cout << n * n;
 
-  // warmup
-  for (int i1 = 0; i1 < n; i1++)
-    for (int i0 = 0; i0 < n; i0++)
-      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
-  auto start = get_time_stamp();
-  jacobi_blocked(context);
-  auto stop = get_time_stamp();
-  double elapsed = get_duration_seconds(start, stop);
-  double updates = context->iterations;
-  updates *= (n - 2) * (n - 2);
-
   // vanilla
   for (int i1 = 0; i1 < n; i1++)
     for (int i0 = 0; i0 < n; i0++)
@@ -690,6 +719,7 @@ int main(int argc, char **argv)
   elapsed = get_duration_seconds(start, stop);
   std::cout << "," << updates / elapsed / 1e9;
 
+  
   // blocked
   for (int i1 = 0; i1 < n; i1++)
     for (int i0 = 0; i0 < n; i0++)
