@@ -6,7 +6,8 @@
 #include <omp.h> // headers for runtime if available
 #endif
 
-#define HAVE_NEON 1
+//#define HAVE_NEON 1
+#define HAVE_VCL 1
 
 #ifdef HAVE_VCL
 #include "vcl/vectorclass.h"

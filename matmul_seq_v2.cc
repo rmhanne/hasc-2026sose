@@ -6,7 +6,7 @@
 // is available in the directory vcl
 #include "vcl/vectorclass.h"
 
-const int P = 24;   // basic block size is a multiple of 4, 8 and 12
+const int P = 24;   // basic block size is a multiple of 4, 8 and 12 
 const int Q = 4;    // multiplier
 const int M = P*Q;  // tile size
 const int N = M*64;// maximum problem size; 
@@ -135,7 +135,7 @@ public:
     delete[] A;
   }
   // run an experiment; can be called several times
-  void run () const {matmul0(n,A,B,C);}
+  void run () const {matmul4(n,A,B,C);}
   // report number of operations
   double operations () const
   {return 2.0*n*n*n;}

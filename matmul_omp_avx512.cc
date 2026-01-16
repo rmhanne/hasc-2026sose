@@ -9,10 +9,10 @@
 // is available in the directory vcl
 #include "vcl/vectorclass.h"
 
-const int P = 3;   // basic block size is a multiple of 4, 8 and 12
+const int P = 12;   // basic block size is a multiple of 4, 8 and 12
 const int Q = 8;    // multiplier=SIMD width
 const int M = P*Q;  // tile size
-const int N = 8000;// maximum problem size; 
+const int N = 16000;// maximum problem size; 
 
 // row-major index mapping
 #define INDEX(i,j,n) ((i)*n+(j))
@@ -200,7 +200,7 @@ int main (int argc, char** argv)
   int P=omp_get_max_threads();
   
   std::vector<int> sizes;
-  for (int i=120; i<=N; i*=2) sizes.push_back(i);
+  for (int i=M; i<=N; i*=2) sizes.push_back(i);
   const size_t W=8; // SIMD
   std::cout << "N, "
 	   // << "Vec" << W << "d_4_3_" << M 

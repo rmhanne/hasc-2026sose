@@ -4,7 +4,7 @@
 CC = g++
 CCMPI = mpicxx-mpich-gcc12 
 CCTBB = g++
-DPCPP = dpcpp
+DPCPP = icpx -fsycl
 
 # compilation flags without GMP stuff
 # no vectorization
@@ -12,24 +12,25 @@ DPCPP = dpcpp
 #CCFLAGS = -O3 -fno-tree-vectorize -fno-trapping-math -funroll-loops -ffast-math -fopt-info-vec -fargument-noalias
 # AVX2 with vector class library
 CCFLAGSBASE2 = -std=c++17 -O3
-CCFLAGSBASE = -I/opt/local/include -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
+CCFLAGSBASE = -I/opt/intel/oneapi/2025.3/include -std=c++17 -O3 -fno-trapping-math -fabi-version=0 -funroll-loops -ffast-math -fargument-noalias
 ARMFLAGS = -ftree-vectorize -march=armv8-a+dotprod -fopt-info-vec
 SSE2FLAGS = -ftree-vectorize -msse2 -fopt-info-vec
 AVX2FLAGS = -ftree-vectorize -mavx2 -mfma -fopt-info-vec
-AVX512FLAGS = -ftree-vectorize -mfma -mavx512f -mavx512cd -march=skylake-avx512 -flto
+AVX512FLAGS = -ftree-vectorize -mavx512f -mfma -fopt-info-vec
+#AVX512FLAGS = -ftree-vectorize -mfma -march=native 
 OMPFLAGS = -fopenmp
-CCFLAGS = $(CCFLAGSBASE) $(ARMFLAGS)
+CCFLAGS = $(CCFLAGSBASE) $(AVX2FLAGS)
 CCFLAGS_AVX2 = $(CCFLAGSBASE) $(AVX2FLAGS)
-CCFLAGS_AVX512 = $(CCFLAGS_BASE) $(AVX512FLAGS)
-CCFLAGS_DPCPP = -Ofast -fargument-noalias
+CCFLAGS_AVX512 = $(CCFLAGSBASE) $(AVX512FLAGS)
+CCFLAGS_DPCPP = -O3 -ffast-math -fargument-noalias
 
-//CCFLAGS_TBB = -std=c++17 -Ofast -xHost -fargument-noalias
+//CCFLAGS_TBB = -std=c++17 -O3 -ffast-math -xHost -fargument-noalias
 
 # linker flags
 LFLAGS = -lm -lpthread
 LFLAGS_OMP = -lm -lpthread
 LFLAGS_MPI = -lm -lpthread
-LFLAGS_TBB = -lm -L/opt/local/lib -ltbb
+LFLAGS_TBB = -lm -L/opt/intel/oneapi/2025.3/lib -ltbb
 LFLAGS_DPCPP =
 
 

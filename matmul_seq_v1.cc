@@ -125,7 +125,7 @@ int main(int argc, char **argv)
   std::cout << "N=" << N << " M=" << M << std::endl;
   for (auto i : sizes)
   {
-    Experiment0 e(i);
+    Experiment1 e(i);
     auto d = time_experiment(e, 500000);
     double flops = d.first * e.operations() / d.second * 1e6 / 1e9;
     std::cout << i

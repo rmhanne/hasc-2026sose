@@ -1,7 +1,7 @@
 #include <iostream>
 #include <array>
 #include <vector>
-#include <CL/sycl.hpp>
+#include <sycl/sycl.hpp>
 
 // custom device selector
 // prints all devices available to the application
@@ -10,8 +10,8 @@ public:
   int operator() (const sycl::device& dev) const
   {
     int score = -1;
-    if (dev.is_host()) score += 100;
     if (dev.is_cpu()) score += 200;
+    if (dev.is_gpu() || dev.is_accelerator()) score += 300;
     std::cout << "device: " 
               << dev.get_info<sycl::info::device::name>() 
               << std::endl;
@@ -100,7 +100,7 @@ int main (int argc, char** argv)
           sycl::group<2> grp = itm.get_group(); // my work group
           sycl::id<2> grp_id = grp.get_id(); // group of this item
           sycl::range<2> grp_range = grp.get_local_range(); // size of group
-          sycl::ONEAPI::sub_group sgrp = itm.get_sub_group(); // my sub_group
+          sycl::sub_group sgrp = itm.get_sub_group(); // my sub_group
           int m = idx[0]+idx[1];
         }
       );
