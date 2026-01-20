@@ -4,6 +4,22 @@
 #include <chrono>
 #include <utility>
 
+//! a function getting current value of high resolution clock
+auto get_time_stamp()
+{
+  return std::chrono::high_resolution_clock::now();
+}
+
+// compute difference of two time stamps in seconds
+// the data type T is that returned by get_time_stamp
+template <typename T>
+double get_duration_seconds(T start, T stop)
+{
+  auto duration = stop - start;
+  auto dcast = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+  return dcast / 1e6;
+}
+
 /*! \brief time an experiment
  * This function template takes an experiment, which is a class with a method
  * void run () {} and measures the time that it takes to execute that function.
@@ -19,41 +35,26 @@
  *
  */
 template <typename T>
-auto time_experiment(const T &experiment, int mintime = 250000)
+auto time_experiment(const T &experiment, double mintime = 0.5)
 {
-  auto start = std::chrono::high_resolution_clock::now();
+  auto start = get_time_stamp();
   auto stop = start;
-  auto duration = stop - start;
-  auto dcast = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-  std::pair<long, decltype(dcast)> rv;
+  auto duration = get_duration_seconds(start,stop);
+  std::pair<long, double> rv;
   long rep = 1;
-  while (dcast < mintime && rep < 1000000000)
+  while (duration < mintime && rep < 100000000)
   {
-    start = std::chrono::high_resolution_clock::now();
+    start = get_time_stamp();
     for (long k = 0; k < rep; k++)
-      experiment.run();
-    stop = std::chrono::high_resolution_clock::now();
-    duration = stop - start;
-    dcast = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+      experiment();
+    stop = get_time_stamp();
+    duration = get_duration_seconds(start,stop);
     // std::cout << " rep=" << rep << " d=" << dcast << std::endl;
     rv.first = rep;
-    rv.second = dcast;
+    rv.second = duration;
     rep *= 2;
   }
   return rv;
-}
-
-auto get_time_stamp()
-{
-  return std::chrono::high_resolution_clock::now();
-}
-
-template <typename T>
-double get_duration_seconds(T start, T stop)
-{
-  auto duration = stop - start;
-  auto dcast = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-  return dcast / 1e6;
 }
 
 #endif
