@@ -11,7 +11,11 @@ matmul_seq: matmul_seq.cc Makefile ../make.def
 matmul_omp_avx512: matmul_omp_avx512.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(AVX512FLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
+matmul_armneon: matmul_armneon.cc Makefile ../make.def
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(ARMFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
 clean:
 	rm -f *.o \
 	matmul_seq \
-	matmul_omp_avx512
+	matmul_omp_avx512 \
+	matmul_armneon
