@@ -12,7 +12,7 @@
 const int P = 24;     // basic block size is a multiple of 4, 8 and 12
 const int Q = 4;      // multiplier
 const int M = P * Q;  // tile size
-const int N = M * 64; // maximum problem size;
+const int N = 16000;  // maximum problem size; 
 
 #define INDEX(i, j, n) ((i)*n + (j)) // row major mapping
 #define CMINDEX(i, j, n) ((j)*n + (i)) // column major
