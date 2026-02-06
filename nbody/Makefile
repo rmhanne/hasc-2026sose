@@ -27,10 +27,10 @@ ROOTPATH = ../
 
 all: $(TARGETS)
 
-nbody_vanilla: nbody_vanilla.cc Makefile ../make.def
+nbody_vanilla: nbody_vanilla.cc Makefile ../make.def nbody_generate.hh nbody_io.hh
 	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(SIMDFLAGS) -o $@ $< $(LFLAGS)
 
-nbody_armneon_SoA: nbody_armneon_SoA.cc Makefile ../make.def
+nbody_armneon_SoA: nbody_armneon_SoA.cc Makefile ../make.def nbody_generate.hh nbody_io.hh
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(ARMFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 debug:

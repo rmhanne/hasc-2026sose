@@ -5,7 +5,7 @@
 # define your architecture, currently supports: generic, arm, intel
 ######################
 
-ARCHITECTURE = arm
+ARCHITECTURE = intel
 
 ######################
 # define availability of programming models by commenting in/out the following lines
@@ -17,23 +17,23 @@ HAVE_OPENMP = 1
 
 HAVE_TBB = 1
 
-#HAVE_SYCL = 1
+HAVE_SYCL = 1
 
 ######################
 # set all the different compilers
 ######################
 
 # C++ compiler for sequential programs
-CC = g++
+CC = g++-14
 
 # C++ compiler for openMP programs
-CCOMP = g++
+CCOMP = g++-14
 
 # C++ compiler for MPI programs
 CCMPI = mpicxx 
 
 # C++ compiler to be used for Intel oneAPI TBB programs
-CCTBB = g++
+CCTBB = g++-14
 
 # C++ compiler to be used for Intel oneAPI Sycl programs
 DPCPP = icpx -fsycl
@@ -43,7 +43,7 @@ DPCPP = icpx -fsycl
 ######################
 
 # options to be used with all compilers
-CCFLAGSBASE = -std=c++26 -O3 -fno-trapping-math -funroll-loops -ffast-math -fargument-noalias
+CCFLAGSBASE =  -O3 -fno-trapping-math -funroll-loops -ffast-math -fargument-noalias
 
 # additional flags for openMP compilation
 OMPFLAGS = -fopenmp
@@ -68,15 +68,15 @@ AVX512FLAGS = -ftree-vectorize -mavx512f -mfma -fopt-info-vec
 
 # flags for vectorization with std::simd; need to adapt this to your hardware
 ifeq ($(ARCHITECTURE),arm)
-SIMDFLAGS = $(ARMFLAGS)
+SIMDFLAGS = -std=c++26 $(ARMFLAGS)
 endif
 ifeq ($(ARCHITECTURE),intel)
-SIMDFLAGS = $(AVX2FLAGS)
+SIMDFLAGS = -std=c++26 $(AVX512FLAGS)
 endif
 
 # flags for TBB targets
-TBBFLAGS = -I/opt/local/libexec/onetbb/include
-#TBBFLAGS = -I/opt/intel/oneapi/2025.3/include
+#TBBFLAGS = -I/opt/local/libexec/onetbb/include
+TBBFLAGS = -I/opt/intel/oneapi/2025.3/include
 
 # additional flags for Intel oneAPI Sycl compilation 
 DPCPPFLAGS = -I/opt/intel/oneapi/2025.3/include
@@ -96,8 +96,8 @@ LFLAGSOMP = -lpthread
 LFLAGSMPI = -lpthread
 
 # additional options for TBB programs
-LFLAGSTBB = -L/opt/local/libexec/onetbb/lib/ -ltbb
-#LFLAGSTBB = -L/opt/intel/oneapi/2025.3/lib/ -ltbb
+#LFLAGSTBB = -L/opt/local/libexec/onetbb/lib/ -ltbb
+LFLAGSTBB = -L/opt/intel/oneapi/2025.3/lib/ -ltbb
 
 # additional options for oneAPI Sycl programs
 LFLAGSDPCPP =

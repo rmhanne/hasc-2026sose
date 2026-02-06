@@ -41,15 +41,17 @@ int get_vtk_numbodies (FILE *f)
   int N;
   char buf1[512];
   char buf2[512];
+  char* rvs;
+  int rvi;
 
   /* header */
-  fgets(buf1,512,f);
-  fgets(buf1,512,f);
-  fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
 
   /* points */
-  fgets(buf1,512,f);
-  fscanf(f,"%s %d %s",buf1,&N,buf2);
+  rvs=fgets(buf1,512,f);
+  rvi=fscanf(f,"%s %d %s",buf1,&N,buf2);
   return N;
 }
 
@@ -60,15 +62,17 @@ int read_vtk_file_double (FILE *f, int n, doubleX x[], doubleX v[], double m[],
   int i,N,n1,n2;
   char buf1[512];
   char buf2[512];
+  char* rvs;
+  int rvi;
 
   /* header */
-  fgets(buf1,512,f);
-  fscanf(f,"%s %lg %lg\n",buf1,t,dt);
-  fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
+  rvi=fscanf(f,"%s %lg %lg\n",buf1,t,dt);
+  rvs=fgets(buf1,512,f);
 
   /* points */
-  fgets(buf1,512,f);
-  fscanf(f,"%s %d %s",buf1,&N,buf2);
+  rvs=fgets(buf1,512,f);
+  rvi=fscanf(f,"%s %d %s",buf1,&N,buf2);
   if (N>n) 
     {
       printf("data file too large, aborting read\n");
@@ -76,24 +80,24 @@ int read_vtk_file_double (FILE *f, int n, doubleX x[], doubleX v[], double m[],
     }
   n = N;
   for (i=0; i<n; i++)
-    fscanf(f,"%lg %lg %lg\n",&(x[i][0]),&(x[i][1]),&(x[i][2]));
+    rvi=fscanf(f,"%lg %lg %lg\n",&(x[i][0]),&(x[i][1]),&(x[i][2]));
 
   /* vertices */
-  fscanf(f,"%s %d %d\n",buf1,&n1,&n2);
+  rvi=fscanf(f,"%s %d %d\n",buf1,&n1,&n2);
   for (i=0; i<n; i++)
-    fscanf(f,"%d %d\n",&n1,&n2);
+    rvi=fscanf(f,"%d %d\n",&n1,&n2);
 
   /* scalar data fields*/
-  fgets(buf1,512,f);
-  fgets(buf1,512,f);
-  fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
   for (i=0; i<n; i++)
-    fscanf(f,"%lg\n",&(m[i]));
+    rvi=fscanf(f,"%lg\n",&(m[i]));
 
   /* vector data */
-  fgets(buf1,512,f);
+  rvs=fgets(buf1,512,f);
   for (i=0; i<n; i++)
-    fscanf(f,"%lg %lg %lg\n",&(v[i][0]),&(v[i][1]),&(v[i][2]));
+    rvi=fscanf(f,"%lg %lg %lg\n",&(v[i][0]),&(v[i][1]),&(v[i][2]));
   return 0;
 }
 
