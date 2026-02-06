@@ -21,6 +21,7 @@ ROOTPATH = ../
 
 # the default target
 all: $(TARGETS)
+.PHONY : all
 
 matmul_seq: matmul_seq.cc Makefile ../make.def
 	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(SCALARFLAGS) -o $@ $< $(LFLAGS)

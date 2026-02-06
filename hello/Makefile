@@ -19,6 +19,7 @@ ifdef HAVE_SYCL
 endif
 
 all: $(TARGETS)
+.PHONY : all
 
 hello_openmp: hello_openmp.cc Makefile ../make.def
 	$(CCOMP) $(CCFLAGSBASE) $(OMPFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
@@ -38,5 +39,6 @@ hello_sycl: hello_sycl.cc Makefile ../make.def
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
 
+.PHONY : clean
 clean:
 	rm -f *.o $(TARGETS)
