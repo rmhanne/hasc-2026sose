@@ -6,12 +6,40 @@ I am currently restructuring the code for the lecture in summer semester 2026! T
 
 This repository collects code for the hardware aware scientific computing lecture. The code in this repository will change as the lecture proceeds so expect some changes and merge conflicts if you change anything in here.
 
-**Important:** If you clone this repository use the `--recursive` option to include submodules.
+# Software requirements
+
+The hasc-code examples are tested on Linux (Ubuntu 24.04.3 (Noble Numbat) as well as on Apple MacBook Pro (M2 Max, MacOS Ventura, MacPorts) using the GNU C++ Compiler. Windows is not supported.
+
+The lecture covers several different programming models. Some of these are handled by most C++ compilers, others require additional software to be installed on your system. Some of this software can be installed via usual packet managers, other has to be downloaded and installed manually. The following subsection should give the rquired information.
+
+## Simd vectorization for Intel/AMD processors 
+
+## Simd vectorization for Arm (neon) processors 
+
+## Portable Simd vectorization using std::simd 
+
+## Open MP 
+
+## Intel Thread Building Blocks (TBB)
+
+## Sycl
+
+## Message Passing Interface (MPI)
 
 
-You can either directly use the Makefile provided in this repository or use CMake for building the code.
 
-## Makefile
+
+
+
+# Installation
+
+Download the code from the git repository using
+
+```
+git clone --recursive https://parcomp-git.iwr.uni-heidelberg.de/Teaching/hasc-code.git
+```
+The `--recursive` option is important to include the vector class library (https://github.com/vectorclass/version2) as submodule.
+
 
 Have a look at the `Makefile` and adjust it to your system:
 
