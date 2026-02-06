@@ -14,19 +14,33 @@ The lecture covers several different programming models. Some of these are handl
 
 ## Simd vectorization for Intel/AMD processors 
 
+Explicit SIMD vectorization for AVX2 and AVX512 is done using the [vector class library](https://github.com/vectorclass/version2). Use the --recursive option when cloning the repository.
+
 ## Simd vectorization for Arm (neon) processors 
+
+Explicit SIMD vectorization for Arm processors, more specifically Apple Silicon with NEON support is done using neon intrinsics [(see here for documentation)](https://github.com/thenifty/neon-guide). This should be available with gcc on such systems without installation.
 
 ## Portable Simd vectorization using std::simd 
 
+This requires a C++-compiler supporting the 2026 standard of C++. As of this writing this is supported by GCC 14 when passing the option -std=c++26 in the namespace std::experimental.
+
 ## Open MP 
+
+Is supported by GCC and Clang compilers using appropriate options (see make.def)
 
 ## Intel Thread Building Blocks (TBB)
 
+This is an open-source library released by Intel. Hasc-code uses the newer version named oneTBB. It should be available with your package manager. With macports the port is called onetbb.
+
+On LINUX you should install Intel's [oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?packages=oneapi-toolkit&oneapi-toolkit-os=linux&oneapi-lin=offline), which gives you oneTBB as well as the Sycl compiler (see below).
+
 ## Sycl
+
+[SYCL](https://registry.khronos.org/SYCL/specs/sycl-2020/html/sycl-2020.html) is C++ extension based on an open standard that allows one to write portable code for CPUs and GPUs (at least that is the idea). [Several compilers]((https://www.intel.com/content/www/us/en/developer/articles/technical/quick-guide-to-sycl-implementations.html)) are available. Hasc-code uses Intel's [oneAPI Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?packages=oneapi-toolkit&oneapi-toolkit-os=linux&oneapi-lin=offline) for its SYCL examples. This is restricted to Intel/AMD hardware.
 
 ## Message Passing Interface (MPI)
 
-
+Should be available with most package managers. Popular implementations are [MPICH](https://www.mpich.org/) and [OpenMPI](https://www.open-mpi.org/) (not to be confused with OpenMP).
 
 
 
@@ -38,7 +52,7 @@ Download the code from the git repository using
 ```
 git clone --recursive https://parcomp-git.iwr.uni-heidelberg.de/Teaching/hasc-code.git
 ```
-The `--recursive` option is important to include the vector class library (https://github.com/vectorclass/version2) as submodule.
+The `--recursive` option is important to include the [vector class library](https://github.com/vectorclass/version2) as submodule.
 
 
 Have a look at the `Makefile` and adjust it to your system:
