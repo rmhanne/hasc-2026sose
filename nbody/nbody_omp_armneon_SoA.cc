@@ -14,64 +14,34 @@
 #include <omp.h> // headers for runtime if available
 #endif
 
-#define HAVE_NEON 1
-
-#ifdef HAVE_VCL
-#include "vcl/vectorclass.h"
-#endif
-
-#ifdef HAVE_NEON
+// for ARM intrinsics
 #include <arm_neon.h>
-#endif
 
 #ifndef __GNUC__
 #define __restrict__
 #endif
+
+/*
+ * This version uses the "structure of arrays" (SoA) data layout.
+ * Since the generate and file I/O functions use the "array of structures" (AoS) layout,
+ * the data needs to be converted after (reading) or before (writing) using these functions.
+ */
 
 // basic data type for position, velocity, acceleration
 const int M = 3;
 typedef double double3[M]; // pad up for later use with SIMD
 const int B = 128;				 // block size for tiling
 
-// const double G = 6.674E-11;
 const double G = 1.0;
 const double epsilon2 = 1E-10;
 
-/** \brief compute acceleration vector from position and masses (vanilla sequential version)
- *
- * This version works on structure of arrays data layout
- * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
- * flops including 1 division and one square root
- */
-void acceleration(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
-{
-	for (int i = 0; i < n; i++)
-		for (int j = i + 1; j < n; j++)
-		{
-			double d0 = x[j] - x[i];
-			double d1 = x[n + j] - x[n + i];
-			double d2 = x[2 * n + j] - x[2 * n + i];
-			double r2 = d0 * d0 + d1 * d1 + d2 * d2 + epsilon2;
-			double r = sqrt(r2);
-			double invfact = G / (r * r2);
-			double factori = m[i] * invfact;
-			double factorj = m[j] * invfact;
-			a[i] += factorj * d0;
-			a[n + i] += factorj * d1;
-			a[2 * n + i] += factorj * d2;
-			a[j] -= factori * d0;
-			a[n + j] -= factori * d1;
-			a[2 * n + j] -= factori * d2;
-		}
-}
-
 /** \brief compute acceleration vector from position and masses
  *
- * Vanilla version blocked but without buffers
+ * Sequential blocked version
  * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
  * flops including 1 division and one square root
  */
-void acceleration_blocked(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
+void acceleration_blocked_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ a)
 {
 	for (int I = 0; I < n; I += B)
 	{
@@ -117,21 +87,21 @@ void acceleration_blocked(int n, double *__restrict__ x, double *__restrict__ m,
 	}
 }
 
-/** \brief compute acceleration vector from position and masses (blocked OMP parallel version)
+/** \brief compute acceleration vector from position and masses (blocked sequential version)
  *
  * This version works on structure of arrays data layout
  * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
  * flops including 1 division and one square root
  */
-void acceleration_blocked_buffered(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+void acceleration_blocked_buffered_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
 	// make private acceleration vectors to accumulate to
-	// these are then added to aglobal
 	double *aI;
 	aI = new (std::align_val_t(64)) double[3 * B];
 	double *aJ;
 	aJ = new (std::align_val_t(64)) double[3 * B];
 
+	// parallel loop over block rows with *cyclic* partitioning and dynamic scheduling
 	for (int I = 0; I < n; I += B)
 	{
 		// clear accelerations for whole block row
@@ -192,6 +162,7 @@ void acceleration_blocked_buffered(int n, double *__restrict__ x, double *__rest
 			for (int j = 0; j < B; ++j)
 				aglobal[J + j + 2 * n] += aJ[j + 2 * B];
 		} // end J loop
+
 		// update accelerations of block I
 		for (int i = 0; i < B; ++i)
 			aglobal[I + i] += aI[i];
@@ -211,7 +182,7 @@ void acceleration_blocked_buffered(int n, double *__restrict__ x, double *__rest
  * Executes \sum_{i=0}^{n-1} (n-i-1)*26 = n(n-1)*13
  * flops including 1 division and one square root
  */
-void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+void acceleration_blocked_omp_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
 	std::vector<std::mutex> mutexes(n / B); // one mutex per block
 
@@ -224,7 +195,7 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 		double *aJ;
 		aJ = new (std::align_val_t(64)) double[3 * B];
 
-		// parallel loop over block rows with *cyclic* partitioning
+		// parallel loop over block rows with *cyclic* partitioning and dynamic scheduling
 #pragma omp for schedule(dynamic, 1)
 		for (int I = 0; I < n; I += B)
 		{
@@ -290,7 +261,8 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 						aglobal[J + j + 2 * n] += aJ[j + 2 * B];
 				}
 			} // end J loop
-				// update accelerations of block I
+
+			// update accelerations of block I
 			// #pragma omp critical
 			std::lock_guard<std::mutex> ul{mutexes[I / B]};
 			{
@@ -308,12 +280,11 @@ void acceleration_blocked_omp(int n, double *__restrict__ x, double *__restrict_
 	}
 }
 
-#ifdef HAVE_NEON
 /** \brief compute acceleration vector from position and masses (vectorized using 2x2 masses)
  *
  * This version works on structure of arrays data layout
  */
-void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+void acceleration_blocked_omp_vectorized_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
 #pragma omp parallel firstprivate(n, x, m, aglobal)
 	{
@@ -513,7 +484,7 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 						vst1q_f64(&(aI[i - I + B]), A1);
 						vst1q_f64(&(aI[i - I + 2 * B]), A2);
 					}
-					// update accelerations for block J
+				// update accelerations for block J
 #pragma omp critical
 				{
 					for (int j = 0; j < B; ++j)
@@ -540,7 +511,6 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 		delete[] aJ;
 	}
 }
-#endif
 
 /** \brief do one time step with leapfrog
  *
@@ -557,15 +527,14 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 		a[i] = 0.0;
 
 	// compute new acceleration: n*(n-1)*13 flops
-	// acceleration(n, x, m, a);
-	// acceleration_blocked(n, x, m, a);
-	// acceleration_blocked_buffered(n, x, m, a);
-	// acceleration_blocked_omp(n, x, m, a);
-  acceleration_blocked_vectorized(n, x, m, a);
+	// acceleration_blocked_SoA(n, x, m, a);
+	acceleration_blocked_buffered_SoA(n, x, m, a);
+			// acceleration_blocked_omp_SoA(n, x, m, a);
+			// acceleration_blocked_omp_vectorized_SoA(n, x, m, a);
 
-	// update velocity: 6n flops
-	for (int i = 0; i < 3 * n; i++)
-		v[i] += dt * a[i];
+			// update velocity: 6n flops
+			for (int i = 0; i < 3 * n; i++)
+					v[i] += dt * a[i];
 }
 
 template <typename T>
@@ -661,7 +630,7 @@ int main(int argc, char **argv)
 		x = new (std::align_val_t(64)) double3[n];
 		v = new (std::align_val_t(64)) double3[n];
 		m = new (std::align_val_t(64)) double[n];
-		//plummer(n, 17, x, v, m);
+		// plummer(n, 17, x, v, m);
 		two_plummer(n, 17, x, v, m);
 		//  cube(n,17,1.0,100.0,0.1,x,v,m);
 		std::cout << "initialized " << n << " bodies" << std::endl;
@@ -739,8 +708,8 @@ int main(int argc, char **argv)
 
 			auto ekin1 = ekin(n, m, v);
 			auto epot1 = epot(n, m, x, G);
-			std::cout << "ekin=" << ekin1 << " epot=" << epot1 << " etot=" << ekin1 + epot1 
-			<< " ratio=" << (ekin1+epot1)/(ekin0+epot0) << std::endl;
+			std::cout << "ekin=" << ekin1 << " epot=" << epot1 << " etot=" << ekin1 + epot1
+								<< " ratio=" << (ekin1 + epot1) / (ekin0 + epot0) << std::endl;
 
 			start = get_time_stamp();
 		}

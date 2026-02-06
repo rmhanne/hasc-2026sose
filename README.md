@@ -38,6 +38,8 @@ On LINUX you should install Intel's [oneAPI Base Toolkit](https://www.intel.com/
 
 [SYCL](https://registry.khronos.org/SYCL/specs/sycl-2020/html/sycl-2020.html) is C++ extension based on an open standard that allows one to write portable code for CPUs and GPUs (at least that is the idea). [Several compilers]((https://www.intel.com/content/www/us/en/developer/articles/technical/quick-guide-to-sycl-implementations.html)) are available. Hasc-code uses Intel's [oneAPI Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html?packages=oneapi-toolkit&oneapi-toolkit-os=linux&oneapi-lin=offline) for its SYCL examples. This is restricted to Intel/AMD hardware.
 
+After you have installed the software provided by Intel you have to execute a shell script in the shell where you want to compile in order to be able to use the Sycl compiler.
+
 ## Message Passing Interface (MPI)
 
 Should be available with most package managers. Popular implementations are [MPICH](https://www.mpich.org/) and [OpenMPI](https://www.open-mpi.org/) (not to be confused with OpenMP).
