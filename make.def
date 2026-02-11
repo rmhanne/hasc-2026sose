@@ -36,7 +36,8 @@ CCMPI = mpicxx
 CCTBB = g++-14
 
 # C++ compiler to be used for Intel oneAPI Sycl programs
-DPCPP = icpx -fsycl
+#DPCPP = icpx -fsycl
+DPCPP = /Users/peterbastian/Software/local/bin/acpp
 
 ######################
 # set compilation options for various configurations
@@ -88,7 +89,8 @@ endif
 TBBFLAGS = -I/opt/intel/oneapi/2025.3/include
 
 # additional flags for Intel oneAPI Sycl compilation 
-DPCPPFLAGS = -I/opt/intel/oneapi/2025.3/include
+#DPCPPFLAGS = -I/opt/intel/oneapi/2025.3/include
+DPCPPFLAGS = 
 
 
 ######################

@@ -3,22 +3,6 @@
 #include <vector>
 #include <sycl/sycl.hpp>
 
-// custom device selector
-// prints all devices available to the application
-// class MySelector : public sycl::device_selector {
-// public:
-//   int operator() (const sycl::device& dev) const
-//   {
-//     int score = -1;
-//     if (dev.is_cpu()) score += 200;
-//     if (dev.is_gpu() || dev.is_accelerator()) score += 300;
-//     std::cout << "device: " 
-//               << dev.get_info<sycl::info::device::name>() 
-//               << std::endl;
-//     return score;
-//   }
-// };
-
 
 int main (int argc, char** argv)
 {
