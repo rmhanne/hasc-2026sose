@@ -35,6 +35,163 @@ const int B = 128;				 // block size for tiling
 const double G = 1.0;
 const double epsilon2 = 1E-10;
 
+/** \brief compute acceleration vector from position and masses (vectorized using 1x2 masses)
+ *
+ * This version works on structure of arrays data layout
+ */
+void acceleration_blocked_omp_vectorized_SoA_new(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+{
+	std::vector<std::mutex> mutexes(n / B); // one mutex per block
+
+#pragma omp parallel firstprivate(n, x, m, aglobal)
+	{
+		// simd definitions
+		const int simd_width = 2;
+		using simd_type = float64x2_t;
+
+		// make private acceleration vectors to accumulate to
+		// for omp parallel version
+		double *aI;
+		aI = new (std::align_val_t(64)) double[3 * B];
+		double *aJ;
+		aJ = new (std::align_val_t(64)) double[3 * B];
+
+		// simd registers
+		simd_type XI0, XI1, XI2; // broadcasted coordinates of body i
+		simd_type DJ0, DJ1, DJ2; // position of bodies j, ..., j+simd_width-1
+		simd_type AJ0, AJ1, AJ2; // accelerations of bodies j, ..., j+simd_width-1
+		simd_type R, R3;				 // distances, squared distances and cubed distances
+		simd_type MI, MJ;				 // broadcasted mass of body i, and individual masses j
+		simd_type S, F;					 // scalar factors
+		simd_type VECG;					 // gravitational constant as vector
+		VECG = vmovq_n_f64(G);	 // broadcast for gravitational constant
+
+		// for conversion from simd_type to scalar
+		double factor[simd_width];
+		double distance0[simd_width];
+		double distance1[simd_width];
+		double distance2[simd_width];
+
+#pragma omp for schedule(dynamic, 1)
+		for (int I = 0; I < n; I += B)
+		{
+			// clear accelerations for whole block row
+			for (int i = 0; i < 3 * B; ++i)
+				aI[i] = 0.0;
+
+			// diagonal block (I,I) is handled in the standard way exploiting symmetry
+			for (int i = I; i < I + B; i++)
+				for (int j = i + 1; j < I + B; j++)
+				{
+					double d0 = x[j] - x[i];
+					double d1 = x[n + j] - x[n + i];
+					double d2 = x[2 * n + j] - x[2 * n + i];
+					double r2 = d0 * d0 + d1 * d1 + d2 * d2 + epsilon2;
+					double r = sqrt(r2);
+					double invfact = G / (r * r2);
+					double factori = m[i] * invfact;
+					double factorj = m[j] * invfact;
+					aI[i - I] += factorj * d0; // updates private vector
+					aI[i - I + B] += factorj * d1;
+					aI[i - I + 2 * B] += factorj * d2;
+					aI[j - I] -= factori * d0;
+					aI[j - I + B] -= factori * d1;
+					aI[j - I + 2 * B] -= factori * d2;
+				}
+
+			// blocks J>I can also exploit symmetry
+			for (int J = I + B; J < n; J += B)
+			{
+				// clear accelerations for whole block column
+				for (int j = 0; j < 3 * B; ++j)
+					aJ[j] = 0.0;
+
+				for (int i = I; i < I + B; i += 1)
+				{
+					// load position of body i. This can be reused for the whole block row.
+					XI0 = vmovq_n_f64(x[i]);				 // load *broadcast* for x-coordinate
+					XI1 = vmovq_n_f64(x[i + n]);		 // load *broadcast* for y-coordinate
+					XI2 = vmovq_n_f64(x[i + 2 * n]); // load *broadcast* for z-coordinate
+					MI = vmovq_n_f64(m[i]);					 // load *broadcast* for mass i
+
+					for (int j = J; j < J + B; j += simd_width)
+					{
+						// compute interaction of body i and j,j+1 (here simd_width = 2)
+
+						// load positions of simd_width particles starting at j
+						DJ0 = vld1q_f64(&(x[j]));					// x coordinates
+						DJ1 = vld1q_f64(&(x[j + n]));			// y coordinates
+						DJ2 = vld1q_f64(&(x[j + 2 * n])); // z coordinates
+						DJ0 = vsubq_f64(DJ0, XI0);				// difference of x coordinates for simd_width bodies
+						DJ1 = vsubq_f64(DJ1, XI1);				// difference of y coordinates for simd_width bodies
+						DJ2 = vsubq_f64(DJ2, XI2);				// difference of z coordinates for simd_width bodies
+
+						// start loads for accelerations
+						AJ0 = vld1q_f64(&(aJ[j - J]));				 // load x coordinates
+						AJ1 = vld1q_f64(&(aJ[j - J + B]));		 // load y coordinates
+						AJ2 = vld1q_f64(&(aJ[j - J + 2 * B])); // load z coordinates
+
+						// distances of body i to all bodies j,...,j+w-1 with power 1,2,3
+						R3 = vmovq_n_f64(epsilon2);		// regularization
+						R3 = vfmaq_f64(R3, DJ0, DJ0); // fma
+						R3 = vfmaq_f64(R3, DJ1, DJ1); // fma
+						R3 = vfmaq_f64(R3, DJ2, DJ2); // fma
+						R = vsqrtq_f64(R3);						// compute square roots; the advantage is, we do not need the result immediately
+						R3 = vmulq_f64(R3, R);				// R to power 3
+
+						// now compute all scalar factors between i and all bodies j,...,j+w-1
+						S = vdivq_f64(VECG, R3); // these are the scalar factors up to the masses
+
+						// now we update the accelerations of the masses j,...,j+w-1
+						F = vmulq_f64(MI, S);									// scalar factors with masses
+						AJ0 = vfmsq_f64(AJ0, F, DJ0);					// fms
+						AJ1 = vfmsq_f64(AJ1, F, DJ1);					// fms
+						AJ2 = vfmsq_f64(AJ2, F, DJ2);					// fms
+						vst1q_f64(&(aJ[j - J]), AJ0);					// store result
+						vst1q_f64(&(aJ[j - J + B]), AJ1);			// store result
+						vst1q_f64(&(aJ[j - J + 2 * B]), AJ2); // store result
+
+						// scalar updates for mass i
+						MJ = vld1q_f64(&(m[j])); // simd_width masses from j; prefetch
+						F = vmulq_f64(MI, S);		 // scalar factors with masses
+						// F, DJ0, DJ1, DJ2 each contain contributions from two bodies j,j+1
+						vst1q_f64(factor, F);
+						vst1q_f64(distance0, DJ0);
+						vst1q_f64(distance1, DJ1);
+						vst1q_f64(distance2, DJ2);
+						aI[i - I] += factor[0] * distance0[0] + factor[1] * distance0[1];
+						aI[i - I + B] += factor[0] * distance1[0] + factor[1] * distance1[1];
+						aI[i - I + 2 * B] += factor[0] * distance2[0] + factor[1] * distance2[1];
+					}
+				}
+				std::lock_guard<std::mutex> ul{mutexes[J / B]};
+				{
+					// update accelerations for block J
+					for (int j = 0; j < B; ++j)
+						aglobal[J + j] += aJ[j];
+					for (int j = 0; j < B; ++j)
+						aglobal[J + j + n] += aJ[j + B];
+					for (int j = 0; j < B; ++j)
+						aglobal[J + j + 2 * n] += aJ[j + 2 * B];
+				}
+			} // end J loop
+			std::lock_guard<std::mutex> ul{mutexes[I / B]};
+			{
+				// update accelerations of block I
+				for (int i = 0; i < B; ++i)
+					aglobal[I + i] += aI[i];
+				for (int i = 0; i < B; ++i)
+					aglobal[I + i + n] += aI[i + B];
+				for (int i = 0; i < B; ++i)
+					aglobal[I + i + 2 * n] += aI[i + 2 * B];
+			}
+		} // end I loop
+		// delete thread local data
+		delete[] aI;
+		delete[] aJ;
+	}
+}
+
 /** \brief compute acceleration vector from position and masses (vectorized using 2x2 masses)
  *
  * This version works on structure of arrays data layout
@@ -282,7 +439,8 @@ void leapfrog(int n, double dt, double *__restrict__ x, double *__restrict__ v, 
 		a[i] = 0.0;
 
 	// compute new acceleration: n*(n-1)*13 flops
-	acceleration_blocked_omp_vectorized_SoA(n, x, m, a);
+	// acceleration_blocked_omp_vectorized_SoA(n, x, m, a);
+	acceleration_blocked_omp_vectorized_SoA_new(n, x, m, a);
 
 	// update velocity: 6n flops
 	for (int i = 0; i < 3 * n; i++)
