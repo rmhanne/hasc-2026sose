@@ -2,18 +2,24 @@
 include ../make.def
 
 # define targets
-GENERIC_TARGETS = matmul_seq	matmul_omp_stdsimd
+GENERIC_TARGETS = matmul_seq
+OPENMP_TARGETS = matmul_omp_stdsimd
 ARM_TARGETS = matmul_omp_armneon
 INTEL_TARGETS = matmul_omp_avx512
+SYCL_TARGETS = matmul_sycl
 
-ifeq ($(ARCHITECTURE),generic)
-	TARGETS = $(GENERIC_TARGETS)
+TARGETS = $(GENERIC_TARGETS)
+ifdef HAVE_OPENMP
+	TARGETS += $(OPENMP_TARGETS)
 endif
 ifeq ($(ARCHITECTURE),intel)
-	TARGETS = $(GENERIC_TARGETS) $(INTEL_TARGETS)
+	TARGETS += $(INTEL_TARGETS)
 endif
 ifeq ($(ARCHITECTURE),arm)
-	TARGETS = $(GENERIC_TARGETS) $(ARM_TARGETS)
+	TARGETS += $(ARM_TARGETS)
+endif
+ifdef HAVE_SYCL
+	TARGETS += $(SYCL_TARGETS)
 endif
 
 # include path for all targets
@@ -33,6 +39,9 @@ matmul_omp_avx512: matmul_omp_avx512.cc Makefile ../make.def
 
 matmul_omp_armneon: matmul_omp_armneon.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(ARMFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
+matmul_sycl: matmul_sycl.cc Makefile ../make.def
+	$(DPCPP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(CCFLAGSDPCPP) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
