@@ -163,7 +163,7 @@ void acceleration_blocked_vectorized_new (int n, double *__restrict__ x, double 
 
 					// scalar updates for mass i
 					MJ = vld1q_f64(&(m[j]));		     			// simd_width masses from j; prefetch
-					F = vmulq_f64(MI, S);                 // scalar factors with masses
+					F = vmulq_f64(MJ, S);                 // scalar factors with masses
 					// F, DJ0, DJ1, DJ2 each contain contributions from two bodies j,j+1
 					vst1q_f64(factor,F);
 					vst1q_f64(distance0,DJ0);
