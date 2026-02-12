@@ -47,7 +47,7 @@ int main(int argc, char **argv)
   using T = double;
 
   // define block size and matrix size
-  const int M = 48;
+  const int M = 64;
   const int n = 64 * M;
 
   // create a queue on a cpu device
@@ -89,20 +89,44 @@ int main(int argc, char **argv)
   q.wait(); // wait for data to be transfered
 
   // do something on device
-  auto kernel = [=](sycl::nd_item<2> item)
-  {
-    int i = item.get_global_id(0);
-    int j = item.get_global_id(1);
-    for (int k = 0; k < n; ++k)
-      device_C[i * n + j] += device_A[i * n + k] * device_B[k * n + j];
-  };
-  sycl::range global{n,n}; // matrix size
-  sycl::range local{M,M};  // tile size 
   std::cout << "n=" << n << ", M=" << M << std::endl;
   auto start = get_time_stamp();
   q.submit([&](sycl::handler &h)
-           {
-    h.parallel_for(sycl::nd_range{global,local}, kernel); });
+  {
+    sycl::range global{n,n}; // matrix size
+    sycl::range tile{M,M};  // tile size 
+    auto tileA = sycl::local_accessor<T,2>(tile,h);
+    auto tileB = sycl::local_accessor<T,2>(tile,h);
+    auto matmul_kernel_tiled = [=](sycl::nd_item<2> item)
+    {
+      // position of work kitem in global range
+      int i = item.get_global_id()[0];
+      int j = item.get_global_id()[1];
+
+      // position of work item within tile
+      int ii = item.get_local_id()[0];
+      int jj = item.get_local_id()[1];
+
+      // do the blockec matrix-matrix product
+      // each work-item computes one element of the matrix, i.e. it multiplies row i by col j
+      // and we do this in terms of blocks of size KxK
+      T sum = 0.0;
+      for (int K=0; K<n; K+=M)
+      {
+        // load tiles of A,B,C in local memory and synchronize
+        tileA[ii][jj] = device_A[i*n+K+jj];
+        tileB[ii][jj] = device_B[(K+ii)*n+j];
+        sycl::group_barrier(item.get_group());
+
+        // block matrix multiplication and synchronize
+        for (int kk=0; kk<M; ++kk)
+          sum += tileA[ii][kk] * tileB[kk][jj];
+        sycl::group_barrier(item.get_group());
+      }
+      device_C[i * n + j] = sum;
+    };
+    h.parallel_for(sycl::nd_range{global,tile}, matmul_kernel_tiled); 
+  });
   q.wait();
   auto stop = get_time_stamp();
   double elapsed = get_duration_seconds(start, stop);
@@ -111,17 +135,13 @@ int main(int argc, char **argv)
 
   // copy data back from device
   q.submit([&](sycl::handler &h)
-           { h.memcpy(host_A, device_A, n * n * sizeof(T)); });
-  q.submit([&](sycl::handler &h)
-           { h.memcpy(host_B, device_B, n * n * sizeof(T)); });
-  q.submit([&](sycl::handler &h)
            { h.memcpy(host_C, device_C, n * n * sizeof(T)); });
   q.wait();
 
   // check result
-//  matmul(n, host_A, host_B, host_D);
-//  auto error = compare(n,host_C,host_D);
-//  std::cout << "error=" << error << std::endl;
+  matmul(n, host_A, host_B, host_D);
+  auto error = compare(n,host_C,host_D);
+  std::cout << "error=" << error << std::endl;
 
   // free memory on device
   sycl::free(device_C, q);
