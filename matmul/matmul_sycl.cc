@@ -47,8 +47,8 @@ int main(int argc, char **argv)
   using T = double;
 
   // define block size and matrix size
-  const int M = 64;
-  const int n = 64 * M;
+  const int M = 32;
+  const int n = 32 * M;
 
   // create a queue on a cpu device
   sycl::queue q{sycl::cpu_selector_v};
