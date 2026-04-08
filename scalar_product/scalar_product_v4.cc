@@ -7,7 +7,7 @@
 
 using NUMBER=double;
 
-const int P = 4;
+const int P = 8;
 const int N=32*1024*1024;     // problem size
 std::vector<NUMBER> x(N,1.0); // first vector
 std::vector<NUMBER> y(N,1.0); // second vector
@@ -74,6 +74,7 @@ public:
 int main ()
 {
   std::cout << N*sizeof(NUMBER)/1024/1024 << " MByte per vector" << std::endl;
+  std::cout << "using " << P << " threads" << std::endl;
   std::vector<int> sizes = {256,1024,4096,16384,65536,262144,1048576,4*1048576,16*1048576,32*1048576};
   for (auto i : sizes)
     { 
