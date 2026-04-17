@@ -11,7 +11,7 @@
 // This assumes that vector class library is available in the directory vcl
 #include "vcl/vectorclass.h"
 
-const int P = 6;   // basic block size is a multiple of 4, 8 and 12
+const int P = 12;   // basic block size is a multiple of 4, 8 and 12
 const int Q = 8;    // multiplier=SIMD width
 const int M = P*Q;  // tile size
 const int N = 16000;// maximum problem size; 
@@ -22,9 +22,14 @@ const int N = 16000;// maximum problem size;
 // initialize all entries
 void initialize(int n, double A[], double B[], double C[])
 {
-  int i, j;
+  int nblocks_per_row = n/M;
+  int nthreads = omp_get_max_threads();
+  int chunk_size = nblocks_per_row*2/nthreads;
+  if (chunk_size==0) chunk_size = 1;
+  //std::cout << "number of blocks per row " << nblocks_per_row << std::endl;
+  //std::cout << "chunk size: " << chunk_size << std::endl;
 
-#pragma omp parallel for schedule (static) firstprivate(n,A,B,C) collapse (2)
+#pragma omp parallel for schedule (static,chunk_size) firstprivate(n,A,B,C) collapse (2)
   for (int i = 0; i < n; i += M)
     for (int j = 0; j < n; j += M)
       for (int s = i; s < i + M; s += 1)
@@ -92,17 +97,22 @@ void matmul4 (int n, const double A[], const double B[], double C[])
   if (n%M!=0) {
      std::cout << "n must be a multiple of M" << std::endl;
      exit(1);
-  } 
-#pragma omp parallel for schedule (static) firstprivate(n,A,B,C) private(CC,BB,AA) collapse (2)
+  }
+  int nblocks_per_row = n/M;
+  int nthreads = omp_get_max_threads();
+  int chunk_size = nblocks_per_row*2/nthreads;
+  if (chunk_size==0) chunk_size = 1;
+
+#pragma omp parallel for schedule (static,chunk_size) firstprivate(n,A,B,C) private(CC,BB,AA) collapse (2)
   for (int i=0; i<n; i+=M) // loop over tiles
     for (int j=0; j<n; j+=M)
       for (int k=0; k<n; k+=M)
 	      // C_ij += A_ik*B_kj where all blocks are MxM
-	      // now C_ij is again blocked into 4x(3*W) blocks
-        for (int s=i; s<i+M; s+=8) // loop over 4x3*W blocks of C within the tiles
+	      // now C_ij is again blocked into 8x(3*W) blocks
+        for (int s=i; s<i+M; s+=8) // loop over 8x3*W blocks of C within the tiles
           for (int t=j; t<j+M; t+=3*Q)
 	        {
-	          // C_st is a 4x3*W block in 12 SIMD registers which is loaded now
+	          // C_st is a 8x3*W block in 24 SIMD registers which is loaded now
 	          for (int p=0; p<8; ++p)
 		        {
 		          // load store amortized over M/8 matrix multiplications
@@ -110,7 +120,7 @@ void matmul4 (int n, const double A[], const double B[], double C[])
 		          CC[p][1].load(&C[INDEX(s+p,t+Q,n)]);
 		          CC[p][2].load(&C[INDEX(s+p,t+2*Q,n)]);
 		        }
-	          // C_st += A_sM*B_Mt where now A_sM is 4xM and B_Mt is Mx3*W
+	          // C_st += A_sM*B_Mt where now A_sM is 8xM and B_Mt is Mx3*W
 	          for (int u=k; u<k+M; u+=1) // columns of A / rows of B
 		        {
 		          // 3 loads of B now amortized over ... 24 fmas
@@ -139,24 +149,24 @@ void matmul4 (int n, const double A[], const double B[], double C[])
 		          CC[3][2] = mul_add(AA,BB[2],CC[3][2]);
 
 		          AA = VecWd(A[INDEX(s+4,u,n)]); // load-broadcast
-		          CC[4][0] = mul_add(AA,BB[0],CC[3][0]);
-		          CC[4][1] = mul_add(AA,BB[1],CC[3][1]);
-		          CC[4][2] = mul_add(AA,BB[2],CC[3][2]);
+		          CC[4][0] = mul_add(AA,BB[0],CC[4][0]);
+		          CC[4][1] = mul_add(AA,BB[1],CC[4][1]);
+		          CC[4][2] = mul_add(AA,BB[2],CC[4][2]);
 
               AA = VecWd(A[INDEX(s+5,u,n)]); // load-broadcast
-		          CC[5][0] = mul_add(AA,BB[0],CC[3][0]);
-		          CC[5][1] = mul_add(AA,BB[1],CC[3][1]);
-		          CC[5][2] = mul_add(AA,BB[2],CC[3][2]);
+		          CC[5][0] = mul_add(AA,BB[0],CC[5][0]);
+		          CC[5][1] = mul_add(AA,BB[1],CC[5][1]);
+		          CC[5][2] = mul_add(AA,BB[2],CC[5][2]);
 
               AA = VecWd(A[INDEX(s+6,u,n)]); // load-broadcast
-		          CC[6][0] = mul_add(AA,BB[0],CC[3][0]);
-		          CC[6][1] = mul_add(AA,BB[1],CC[3][1]);
-		          CC[6][2] = mul_add(AA,BB[2],CC[3][2]);
+		          CC[6][0] = mul_add(AA,BB[0],CC[6][0]);
+		          CC[6][1] = mul_add(AA,BB[1],CC[6][1]);
+		          CC[6][2] = mul_add(AA,BB[2],CC[6][2]);
 
               AA = VecWd(A[INDEX(s+7,u,n)]); // load-broadcast
-		          CC[7][0] = mul_add(AA,BB[0],CC[3][0]);
-		          CC[7][1] = mul_add(AA,BB[1],CC[3][1]);
-		          CC[7][2] = mul_add(AA,BB[2],CC[3][2]);
+		          CC[7][0] = mul_add(AA,BB[0],CC[7][0]);
+		          CC[7][1] = mul_add(AA,BB[1],CC[7][1]);
+		          CC[7][2] = mul_add(AA,BB[2],CC[7][2]);
             }
 	          // write back C
 	          for (int p=0; p<8; ++p)
@@ -175,8 +185,8 @@ int main (int argc, char** argv)
   int nP=omp_get_max_threads();
 
   // print cpu name; works only on linux
-  //auto rv = std::system("cat /proc/cpuinfo | grep 'model name' | tail -1 > model.txt"); // executes the UNIX command "ls -l >test.txt"
-  //std::cout << std::ifstream("model.txt").rdbuf();
+  auto rv = std::system("cat /proc/cpuinfo | grep 'model name' | tail -1 > model.txt"); // executes the UNIX command "ls -l >test.txt"
+  std::cout << std::ifstream("model.txt").rdbuf();
 
   // determine sizes to be tested
   std::vector<int> sizes;
