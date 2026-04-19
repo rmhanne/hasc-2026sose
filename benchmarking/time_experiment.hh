@@ -42,7 +42,7 @@ auto time_experiment(const T &experiment, double mintime = 0.5)
   auto duration = get_duration_seconds(start,stop);
   std::pair<long, double> rv;
   long rep = 1;
-  while (duration < mintime && rep < 100000000)
+  while (duration < mintime && rep < 1000000000)
   {
     start = get_time_stamp();
     for (long k = 0; k < rep; k++)

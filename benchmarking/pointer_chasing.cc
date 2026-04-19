@@ -3,8 +3,8 @@
 
 #include "time_experiment.hh"
 
-const int N = 64 * 1024 * 1024; // max size
-std::vector<int> x(N, 1.0);     // data vector
+const int N = 512 * 1024 * 1024; // max size
+std::vector<int> x(N);     // data vector
 int rglobal = 0;
 
 class Experiment
@@ -20,7 +20,7 @@ public:
       x[i] = (i + s) % n;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     for (int k = 0; k < s; k++)
     {
@@ -28,6 +28,7 @@ public:
       while (i != 0)
         i = x[i];
     }
+    rglobal = x[0];
   }
   // report number of operations
   double operations() const
@@ -50,14 +51,15 @@ public:
     int l = n/s;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
+    int i = 1;
     for (int k = 0; k < s; k++)
     {
-      int i = 1;
       while (i < l)
         ++i;
     }
+    rglobal = i;
   }
   // report number of operations
   double operations() const
@@ -87,11 +89,13 @@ int main()
     for (int stride = 1; stride < vecsize; stride *= 2)
     {
       Experiment e(vecsize, stride);
-      auto d = time_experiment(e, 500000);
+      auto d = time_experiment(e);
+      //std::cout << "stride=" << stride << " repetitions=" << d.first << " duration=" << d.second << std::endl; 
       EmptyExperiment ee(vecsize, stride);
-      auto dd = time_experiment(ee, 50000);
-      double time_per_experiment = d.second * 1.0e-6 / d.first;
-      double time_per_emptyexperiment = dd.second * 1e-6 / dd.first;
+      auto dd = time_experiment(ee);
+      //std::cout << "stride=" << stride << " repetitions=" << dd.first << " duration=" << dd.second << std::endl; 
+      double time_per_experiment = d.second / d.first;
+      double time_per_emptyexperiment = dd.second / dd.first;
       double read_time = (time_per_experiment - time_per_emptyexperiment) / e.operations() * 1e9;
       // std::cout << "XXX " << stride*sizeof(int) << " " << d.first << " " << d.second << " " << time_per_experiment << std::endl;
       // std::cout << "YYY " << stride*sizeof(int) << " " << dd.first << " " << dd.second << " " << time_per_emptyexperiment << std::endl;

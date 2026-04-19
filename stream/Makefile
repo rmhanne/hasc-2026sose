@@ -1,4 +1,4 @@
-CC = gcc-mp-10
+CC = gcc
 CFLAGS = -Ofast -fargument-noalias -march=native -ffreestanding -fopenmp
 
 FC = gfortran
