@@ -8,38 +8,12 @@
 
 using NUMBER=double;
 
-const std::size_t P = 8; // std::thread::hardware_concurrency();
+const std::size_t P = 1; // std::thread::hardware_concurrency();
 const std::size_t N=128*1024*1024; // problem size
 std::vector<NUMBER> x(N,1.0); // first vector
 std::vector<NUMBER> y(N,1.0); // second vector
 NUMBER sum=0.0;    // result
 std::mutex m;      // ensure exclusive access to sum
-
-// // the vanilla scalarproduct
-// void f1 (std::size_t n) // for simplicity arguments and result are global
-// {
-//   for (std::size_t i=0; i<n; ++i)
-//     sum += x[i]*y[i];
-// }
-
-// // loop unrolled scalarproduct
-// void f2 (std::size_t rank, std::size_t n) // for simplicity arguments and result are global
-// {
-//   double sum0=0.0;
-//   double sum1=0.0;
-//   double sum2=0.0;
-//   double sum3=0.0;
-  
-//   for (std::size_t i=0; i<n; i+=4)
-//   {
-//     sum0 += x[i]*y[i];
-//     sum1 += x[i+1]*y[i+1];
-//     sum2 += x[i+2]*y[i+2];
-//     sum3 += x[i+3]*y[i]+3;
-//   }
-
-//   sum = sum0+sum1+sum2+sum3;
-// }
 
 // loop unrolled and vectorizedscalarproduct
 void f (std::size_t rank, std::size_t n) // for simplicity arguments and result are global

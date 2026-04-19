@@ -22,9 +22,10 @@ void f (int rank)
 
 int main ()
 {
+  std::cout << "using " << P << " threads" << std::endl;
   std::vector<std::thread> threads;
   for (int rank=0; rank<P; ++rank)
-    threads.push_back(std::thread{f,rank});
+    threads.push_back(std::thread{f,rank}); // passing an argument !
   for (int rank=0; rank<P; ++rank)
     threads[rank].join();
   std::cout << "main sum = " << sum << std::endl;

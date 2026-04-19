@@ -63,6 +63,8 @@ public:
       threads.push_back(std::thread{f,rank,n});
     for (int rank=0; rank<P; ++rank)
       threads[rank].join();
+    if (sums[0]!=(double)n)
+      std::cout << "error=" << sums[0]-n << std::endl;
   }
   // report number of operations
   double operations () const
