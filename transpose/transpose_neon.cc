@@ -279,7 +279,7 @@ public:
     delete[] B;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     transposeb4_x(n, A, B);
   }
@@ -307,8 +307,8 @@ int main(int argc, char **argv)
   for (auto n : sizes)
   {
     Experimentb4 e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second / 1e9;
     bandwidth1.push_back(result);
     std::cout << result << std::endl;
   }

@@ -10,7 +10,7 @@ void matvec1 (int n, const double* A, const double* x, double* y)
     {
       y[i] = 0.0;
       for (int j=0; j<n; j++) // inner loop is a scalar product
-	y[i] += A[i*n+j]*x[j];
+	      y[i] += A[i*n+j]*x[j];
     }
 }
 
@@ -59,22 +59,22 @@ public:
   Experiment1 (int n_) : n(n_)
   {
     std::cout << "Exp1: " << n << std::endl;
-    A = new double [n*n];
+    A = new (std::align_val_t{64}) double [n*n];
     if (((size_t)A)%64!=0)
       std::cout << "Exp1: A not aligned to 64 " << std::endl;
     initialize(n*n,A);
-    x = new double [n];
+    x = new  (std::align_val_t{64})double [n];
     if (((size_t)x)%64!=0)
       std::cout << "Exp1: x not aligned to 64 " << std::endl;
     initialize(n,x);
-    y = new double [n];
+    y = new (std::align_val_t{64}) double [n];
     if (((size_t)y)%64!=0)
       std::cout << "Exp1: y not aligned to 64 " << std::endl;
     initialize(n,y);
   }
   ~Experiment1 () {delete[]y; delete[]x;  delete[]A;}
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     matvec1(n,A,x,y);
   }
@@ -94,22 +94,22 @@ public:
   Experiment2 (int n_) : n(n_)
   {
     std::cout << "Exp2: " << n << std::endl;
-    A = new double [n*n];
+    A = new (std::align_val_t{64}) double [n*n];
     if (((size_t)A)%64!=0)
       std::cout << "Exp2: A not aligned to 64 " << std::endl;
     initialize(n*n,A);
-    x = new double [n];
+    x = new (std::align_val_t{64}) double [n];
     if (((size_t)x)%64!=0)
       std::cout << "Exp2: x not aligned to 64 " << std::endl;
     initialize(n,x);
-    y = new double [n];
+    y = new (std::align_val_t{64}) double [n];
     if (((size_t)y)%64!=0)
       std::cout << "Exp2: y not aligned to 64 " << std::endl;
     initialize(n,y);
   }
   ~Experiment2 () {delete[]y; delete[]x;  delete[]A;}
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     matvec2(n,A,x,y);
   }
@@ -129,22 +129,22 @@ public:
   Experiment3 (int n_, int b_) : n(n_), b(b_)
   {
     std::cout << "Exp3: " << n << std::endl;
-    A = new double [n*n];
+    A = new (std::align_val_t{64}) double [n*n];
     if (((size_t)A)%64!=0)
       std::cout << "Exp3: A not aligned to 64 " << std::endl;
     initialize(n*n,A);
-    x = new double [n];
+    x = new (std::align_val_t{64}) double [n];
     if (((size_t)x)%64!=0)
       std::cout << "Exp3: x not aligned to 64 " << std::endl;
     initialize(n,x);
-    y = new double [n];
+    y = new (std::align_val_t{64}) double [n];
     if (((size_t)y)%64!=0)
       std::cout << "Exp3: y not aligned to 64 " << std::endl;
     initialize(n,y);
   }
   ~Experiment3 () {delete[]y; delete[]x;  delete[]A;}
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     matvec3(n,std::min(n,b),A,x,y);
   }
@@ -170,8 +170,8 @@ int main (int argc, char** argv)
   for (auto n : sizes)
     { 
       Experiment1 e(n);
-      auto d = time_experiment(e,1000000);
-      double result = d.first*e.operations()/d.second*1e6/1e9;
+      auto d = time_experiment(e);
+      double result = d.first*e.operations()/d.second/1e9;
       bandwidth1.push_back(result);
       std::cout << result << std::endl;
     }
@@ -182,8 +182,8 @@ int main (int argc, char** argv)
   for (auto n : sizes)
     { 
       Experiment2 e(n);
-      auto d = time_experiment(e,1000000);
-      double result = d.first*e.operations()/d.second*1e6/1e9;
+      auto d = time_experiment(e);
+      double result = d.first*e.operations()/d.second/1e9;
       bandwidth2.push_back(result);
       std::cout << result << std::endl;
     }
@@ -194,8 +194,8 @@ int main (int argc, char** argv)
   for (auto n : sizes)
     { 
       Experiment3 e(n,64);
-      auto d = time_experiment(e,1000000);
-      double result = d.first*e.operations()/d.second*1e6/1e9;
+      auto d = time_experiment(e);
+      double result = d.first*e.operations()/d.second/1e9;
       bandwidth3.push_back(result);
       std::cout << result << std::endl;
     }

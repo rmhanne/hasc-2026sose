@@ -83,7 +83,7 @@ public:
     delete[] B;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     transpose1(n, A, B);
   }
@@ -123,7 +123,7 @@ public:
     delete[] B;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     transpose2(n, A, B);
   }
@@ -144,18 +144,18 @@ public:
   // construct an experiment
   Experiment3(int n_) : n(n_)
   {
-    std::cout << "Exp5: " << n << std::endl;
+    std::cout << "Exp3: " << n << std::endl;
     A = new (std::align_val_t{64}) double[n * n];
     B = new (std::align_val_t{64}) double[n * n];
     initialize(n, A);
     initialize(n, B);
     if (((size_t)A) % 64 != 0)
     {
-      std::cout << "Exp5: A not aligned to 64 " << std::endl;
+      std::cout << "Exp3: A not aligned to 64 " << std::endl;
     }
     if (((size_t)B) % 64 != 0)
     {
-      std::cout << "Exp5: B not aligned to 64 " << std::endl;
+      std::cout << "Exp3: B not aligned to 64 " << std::endl;
     }
   }
   ~Experiment3()
@@ -164,7 +164,7 @@ public:
     delete[] B;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     transpose3<M>(n, A, B);
   }
@@ -186,18 +186,18 @@ public:
   // construct an experiment
   Experiment4(int n_) : n(n_)
   {
-    std::cout << "Exp6: " << n << std::endl;
+    std::cout << "Exp4: " << n << std::endl;
     A = new (std::align_val_t{64}) double[n * n];
     B = new (std::align_val_t{64}) double[n * n];
     initialize(n, A);
     initialize(n, B);
     if (((size_t)A) % 64 != 0)
     {
-      std::cout << "Exp6: A not aligned to 64 " << std::endl;
+      std::cout << "Exp4: A not aligned to 64 " << std::endl;
     }
     if (((size_t)B) % 64 != 0)
     {
-      std::cout << "Exp6: B not aligned to 64 " << std::endl;
+      std::cout << "Exp4: B not aligned to 64 " << std::endl;
     }
   }
   ~Experiment4()
@@ -206,7 +206,7 @@ public:
     delete[] B;
   }
   // run an experiment; can be called several times
-  void run() const
+  void operator() () const
   {
     transpose4<M>(n, A, B);
   }
@@ -234,8 +234,8 @@ int main(int argc, char **argv)
   for (auto n : sizes)
   {
     Experiment1 e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth1.push_back(result);
     std::cout << result << std::endl;
   }
@@ -246,8 +246,8 @@ int main(int argc, char **argv)
   for (auto n : sizes)
   {
     Experiment2 e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth2.push_back(result);
     std::cout << result << std::endl;
   }
@@ -258,20 +258,20 @@ int main(int argc, char **argv)
   for (auto n : sizes)
   {
     Experiment3<4> e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth3.push_back(result);
     std::cout << result << std::endl;
   }
   // experiment 4
-  std::cout << expnames.back() << std::endl;
   expnames.push_back("blocked-strided-writed-M4");
+  std::cout << expnames.back() << std::endl;
   std::vector<double> bandwidth4;
   for (auto n : sizes)
   {
     Experiment4<4> e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth4.push_back(result);
     std::cout << result << std::endl;
   }
@@ -282,21 +282,55 @@ int main(int argc, char **argv)
   for (auto n : sizes)
   {
     Experiment3<8> e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth5.push_back(result);
     std::cout << result << std::endl;
   }
   // experiment 6
-  std::cout << expnames.back() << std::endl;
   expnames.push_back("blocked-strided-writed-M8");
+  std::cout << expnames.back() << std::endl;
   std::vector<double> bandwidth6;
   for (auto n : sizes)
   {
     Experiment4<8> e(n);
-    auto d = time_experiment(e, 1000000);
-    double result = d.first * e.operations() * 2 * sizeof(double) / d.second * 1e6 / 1e9;
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
     bandwidth6.push_back(result);
+    std::cout << result << std::endl;
+  }
+  // experiment 7
+  expnames.push_back("blocked-consecutive-write-M16");
+  std::cout << expnames.back() << std::endl;
+  std::vector<double> bandwidth7;
+  for (auto n : sizes)
+  {
+    if (n%16!=0)
+    {
+      bandwidth7.push_back(0.0);
+      continue;
+    }
+    Experiment3<16> e(n);
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
+    bandwidth7.push_back(result);
+    std::cout << result << std::endl;
+  }
+  // experiment 8
+  expnames.push_back("blocked-strided-writed-M16");
+  std::cout << expnames.back() << std::endl;
+  std::vector<double> bandwidth8;
+  for (auto n : sizes)
+  {
+    if (n%16!=0)
+    {
+      bandwidth8.push_back(0.0);
+      continue;
+    }
+    Experiment4<16> e(n);
+    auto d = time_experiment(e);
+    double result = d.first * e.operations() * 2 * sizeof(double) / d.second  / 1e9;
+    bandwidth8.push_back(result);
     std::cout << result << std::endl;
   }
 
@@ -315,6 +349,8 @@ int main(int argc, char **argv)
     std::cout << ", " << bandwidth4[i];
     std::cout << ", " << bandwidth5[i];
     std::cout << ", " << bandwidth6[i];
+    std::cout << ", " << bandwidth7[i];
+    std::cout << ", " << bandwidth8[i];
     std::cout << std::endl;
   }
 
