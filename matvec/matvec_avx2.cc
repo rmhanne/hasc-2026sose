@@ -108,7 +108,7 @@ int main (int argc, char** argv)
   for (auto n : sizes)
     { 
       Experiment4<32> e(n);
-      auto d = time_experiment(e,1000000);
+      auto d = time_experiment(e);
       double result = d.first*e.operations()/d.second/1e9;
       bandwidth4.push_back(result);
       std::cout << result << std::endl;
