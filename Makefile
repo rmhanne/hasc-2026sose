@@ -5,6 +5,8 @@ all:
 	cd nbody && $(MAKE)
 	cd benchmarking && $(MAKE)
 	cd stream && $(MAKE)
+	cd transpose && $(MAKE)
+	cd matvec && $(MAKE)
 
 clean:
 	cd hello && $(MAKE) clean
@@ -13,5 +15,7 @@ clean:
 	cd nbody && $(MAKE) clean
 	cd benchmarking && $(MAKE) clean
 	cd stream && $(MAKE) clean
+	cd transpose && $(MAKE) clean
+	cd matvec && $(MAKE) clean
 
 .PHONY : all clean

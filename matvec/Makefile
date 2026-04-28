@@ -5,7 +5,7 @@ include ../make.def
 GENERIC_TARGETS = matvec
 OPENMP_TARGETS = 
 ARM_TARGETS = 
-INTEL_TARGETS = 
+INTEL_TARGETS = matvec_avx2
 SYCL_TARGETS = 
 
 TARGETS = $(GENERIC_TARGETS)
@@ -30,6 +30,9 @@ all: $(TARGETS)
 
 matvec: matvec.cc Makefile ../make.def
 	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(SCALARFLAGS) -o $@ $< $(LFLAGS)
+
+matvec_avx2: matvec_avx2.cc Makefile ../make.def
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(AVX2FLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)

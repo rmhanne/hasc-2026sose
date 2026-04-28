@@ -5,7 +5,7 @@ include ../make.def
 GENERIC_TARGETS = transpose
 OPENMP_TARGETS = 
 ARM_TARGETS = transpose_neon
-INTEL_TARGETS = 
+INTEL_TARGETS = transpose_avx2
 SYCL_TARGETS = 
 
 TARGETS = $(GENERIC_TARGETS)
@@ -33,6 +33,9 @@ transpose: transpose.cc Makefile ../make.def
 
 transpose_neon: transpose_neon.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(ARMFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
+transpose_avx2: transpose_avx2.cc Makefile ../make.def
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(AVX2FLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)

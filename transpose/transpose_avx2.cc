@@ -3,7 +3,7 @@
 #include <immintrin.h>
 #include <cassert>
 
-#include "vectorclass.h"
+#include "../vcl/vectorclass.h"
 
 #include "time_experiment.hh"
 
@@ -128,7 +128,7 @@ public:
     delete[] _b;
   }
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     transpose_vcl(_n, _a, _b);
   }
@@ -218,7 +218,7 @@ public:
     delete[] _b;
   }
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     transpose_intrinsics_v1(_n, _a, _b);
   }
@@ -298,7 +298,7 @@ public:
     delete[] _b;
   }
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     transpose_intrinsics_v2(_n, _a, _b);
   }
@@ -388,8 +388,8 @@ int main(){
   std::vector<double> bandwidth1;
   for (auto n : sizes){
     ExperimentVCL e(n);
-    auto d = time_experiment(e,1000000);
-    double result = d.first*e.operations()*2*sizeof(double)/d.second*1e6/1e9;
+    auto d = time_experiment(e);
+    double result = d.first*e.operations()*2*sizeof(double)/d.second/1e9;
     bandwidth1.push_back(result);
     std::cout << result << std::endl;
   }
@@ -399,8 +399,8 @@ int main(){
   std::vector<double> bandwidth2;
   for (auto n : sizes){
     ExperimentIntrinsics e(n);
-    auto d = time_experiment(e,1000000);
-    double result = d.first*e.operations()*2*sizeof(double)/d.second*1e6/1e9;
+    auto d = time_experiment(e);
+    double result = d.first*e.operations()*2*sizeof(double)/d.second/1e9;
     bandwidth2.push_back(result);
     std::cout << result << std::endl;
   }
@@ -410,8 +410,8 @@ int main(){
   std::vector<double> bandwidth3;
   for (auto n : sizes){
     ExperimentIntrinsicsV2 e(n);
-    auto d = time_experiment(e,1000000);
-    double result = d.first*e.operations()*2*sizeof(double)/d.second*1e6/1e9;
+    auto d = time_experiment(e);
+    double result = d.first*e.operations()*2*sizeof(double)/d.second/1e9;
     bandwidth3.push_back(result);
     std::cout << result << std::endl;
   }

@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 #include "time_experiment.hh"
-#include "vcl/vectorclass.h"
+#include "../vcl/vectorclass.h"
 
 // y = Ax, matrix assumed to be column major now
 // use SIMD instructions
@@ -81,7 +81,7 @@ public:
   }
   ~Experiment4 () {delete[]y; delete[]x;  delete[]A;}
   // run an experiment; can be called several times
-  void run () const
+  void operator() () const
   {
     matvec4<M>(n,A,x,y);
   }
@@ -109,7 +109,7 @@ int main (int argc, char** argv)
     { 
       Experiment4<32> e(n);
       auto d = time_experiment(e,1000000);
-      double result = d.first*e.operations()/d.second*1e6/1e9;
+      double result = d.first*e.operations()/d.second/1e9;
       bandwidth4.push_back(result);
       std::cout << result << std::endl;
     }
