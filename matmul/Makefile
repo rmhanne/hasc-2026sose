@@ -41,7 +41,7 @@ matmul_omp_armneon: matmul_omp_armneon.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(ARMFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 matmul_sycl: matmul_sycl.cc Makefile ../make.def
-	$(DPCPP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(CCFLAGSDPCPP) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
+	$(DPCPP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(DPCPPFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
