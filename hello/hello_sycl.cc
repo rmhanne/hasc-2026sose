@@ -11,6 +11,7 @@ int main (int argc, char** argv)
   // tasks are running code or transferring data, etc
   // One queue is bound to a specific device
   sycl::queue Q{ sycl::cpu_selector_v };
+  //sycl::queue Q{ sycl::gpu_selector_v };
   std::cout << "default device is " 
             << Q.get_device().get_info<sycl::info::device::name>() 
             << std::endl;
