@@ -11,10 +11,10 @@ ARCHITECTURE = arm
 # define availability of programming models by commenting in/out the following lines
 ######################
 
-HAVE_MPI = 1
 HAVE_OPENMP = 1
-HAVE_TBB = 1
-HAVE_SYCL = 1
+#HAVE_MPI = 1
+#HAVE_TBB = 1
+#HAVE_SYCL = 1
 
 ######################
 # set all the different compilers
