@@ -98,7 +98,7 @@ void acceleration_blocked_buffered_SoA(int n, double *__restrict__ x, double *__
 	double *aJ;
 	aJ = new (std::align_val_t(64)) double[3 * B];
 
-	// parallel loop over block rows with *cyclic* partitioning and dynamic scheduling
+	// loop over block rows
 	for (int I = 0; I < n; I += B)
 	{
 		// clear accelerations for whole block row

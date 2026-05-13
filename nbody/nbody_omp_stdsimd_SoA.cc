@@ -280,12 +280,172 @@ void acceleration_blocked_omp_SoA(int n, double *__restrict__ x, double *__restr
 	}
 }
 
+/** \brief compute acceleration vector from position and masses (vectorized using num_rows x simd_width masses)
+ *
+ * This version works on structure of arrays data layout using std::simd
+ */
+void acceleration_blocked_stdsimd_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+{
+	// simd definitions
+	using simd_type = stdx::native_simd<double>;
+	constexpr int simd_width = simd_type::size();
+	constexpr int num_rows = 2;
+
+	// make acceleration vectors to accumulate to
+	// this enhances performance substantially
+	double *aI;
+	aI = new (std::align_val_t(64)) double[3 * B];
+	double *aJ;
+	aJ = new (std::align_val_t(64)) double[3 * B];
+
+	// simd registers: 8*num_rows + 8
+	simd_type XI0[num_rows]; // broadcasted coordinates of body i,...,i+num_rows-1
+	simd_type XI1[num_rows]; // broadcasted coordinates of body i,...,i+num_rows-1
+	simd_type XI2[num_rows]; // broadcasted coordinates of body i,...,i+num_rows-1
+	simd_type XJ0, XJ1, XJ2; // position of bodies j, ..., j+simd_width-1
+	simd_type DJ0[num_rows]; // distances of bodies j, ..., j+simd_width-1
+	simd_type DJ1[num_rows]; // distances of bodies j, ..., j+simd_width-1
+	simd_type DJ2[num_rows]; // distances of bodies j, ..., j+simd_width-1
+	simd_type AJ0, AJ1, AJ2; // accelerations to bodies j, ..., j+simd_width-1
+	simd_type MI[num_rows];	 // broadcasted mass of body i,...,i+num_rows-1
+	simd_type MJ;						 // individual masses j
+	simd_type S[num_rows];	 // scalar factors
+	simd_type F;						 // scalar factors
+
+	// for conversion from simd_type to scalar
+	double factor[num_rows][simd_width];
+	double distance0[num_rows][simd_width];
+	double distance1[num_rows][simd_width];
+	double distance2[num_rows][simd_width];
+
+	for (int I = 0; I < n; I += B)
+	{
+		// clear accelerations for whole block row
+		for (int i = 0; i < 3 * B; ++i)
+			aI[i] = 0.0;
+
+		// diagonal block (I,I) is handled in the standard way exploiting symmetry
+		for (int i = I; i < I + B; i++)
+			for (int j = i + 1; j < I + B; j++)
+			{
+				double d0 = x[j] - x[i];
+				double d1 = x[n + j] - x[n + i];
+				double d2 = x[2 * n + j] - x[2 * n + i];
+				double r2 = d0 * d0 + d1 * d1 + d2 * d2 + epsilon2;
+				double r = sqrt(r2);
+				double invfact = G / (r * r2);
+				double factori = m[i] * invfact;
+				double factorj = m[j] * invfact;
+				aI[i - I] += factorj * d0; // updates private vector
+				aI[i - I + B] += factorj * d1;
+				aI[i - I + 2 * B] += factorj * d2;
+				aI[j - I] -= factori * d0;
+				aI[j - I + B] -= factori * d1;
+				aI[j - I + 2 * B] -= factori * d2;
+			}
+
+		// blocks J>I can also exploit symmetry
+		for (int J = I + B; J < n; J += B)
+		{
+			// clear accelerations for whole block column
+			for (int j = 0; j < 3 * B; ++j)
+				aJ[j] = 0.0;
+
+			for (int i = I; i < I + B; i += num_rows)
+			{
+				// load position of body i. This can be reused for the whole block row.
+				for (int k = 0; k < num_rows; ++k)
+				{
+					XI0[k] = simd_type(x[i + k]);
+					XI1[k] = simd_type(x[i + k + n]);
+					XI2[k] = simd_type(x[i + k + 2 * n]);
+					MI[k] = simd_type(m[i + k]); // load *broadcast* for mass masses
+				}
+				for (int j = J; j < J + B; j += simd_width)
+				{
+					// compute interaction of num_rows x simd_width bodies
+
+					// load positions of simd_width particles starting at j
+					XJ0.copy_from(&(x[j]), stdx::element_aligned);				 // x coordinates
+					XJ1.copy_from(&(x[j + n]), stdx::element_aligned);		 // y coordinates
+					XJ2.copy_from(&(x[j + 2 * n]), stdx::element_aligned); // z coordinates
+
+					// distances of body i to all bodies j,...,j+w-1 with power 1,2,3
+					for (int k = 0; k < num_rows; ++k)
+					{
+						DJ0[k] = XJ0 - XI0[k];			// difference of x coordinates for simd_width bodies to k
+						DJ1[k] = XJ1 - XI1[k];			// difference of x coordinates for simd_width bodies to k
+						DJ2[k] = XJ2 - XI2[k];			// difference of x coordinates for simd_width bodies to k
+						S[k] = simd_type(epsilon2); // regularization
+						S[k] += DJ0[k] * DJ0[k];
+						S[k] += DJ1[k] * DJ1[k];
+						S[k] += DJ2[k] * DJ2[k];
+						F = stdx::sqrt(S[k]); // compute square roots;
+						S[k] *= F;						// R to power 3
+						F = simd_type(G);			// broadcast for gravitational constant
+						S[k] = F / S[k];			// these are the scalar factors up to the masses
+					}
+
+					// now we update the accelerations of the masses j,...,j+w-1
+					AJ0.copy_from(&(aJ[j - J]), stdx::element_aligned);					// load x coordinates
+					AJ1.copy_from(&(aJ[j - J + B]), stdx::element_aligned);			// load y coordinates
+					AJ2.copy_from(&(aJ[j - J + 2 * B]), stdx::element_aligned); // load z coordinates
+					for (int k = 0; k < num_rows; ++k)
+					{
+						F = MI[k] * S[k]; // scalar factors with masses
+						AJ0 -= F * DJ0[k];
+						AJ1 -= F * DJ1[k];
+						AJ2 -= F * DJ2[k];
+					}
+					AJ0.copy_to(&aJ[j - J], stdx::element_aligned);					// store result
+					AJ1.copy_to(&aJ[j - J + B], stdx::element_aligned);			// store result
+					AJ2.copy_to(&aJ[j - J + 2 * B], stdx::element_aligned); // store result
+
+					// scalar updates for mass i, ..., i+num_rows-1
+					MJ.copy_from(&m[j], stdx::element_aligned); // simd_width masses from j, ..., j+simd_width-1
+					for (int k = 0; k < num_rows; ++k)
+					{
+						F = MJ * S[k]; // scalar factors with masses
+						F.copy_to(factor[k], stdx::element_aligned);
+						DJ0[k].copy_to(distance0[k], stdx::element_aligned);
+						DJ1[k].copy_to(distance1[k], stdx::element_aligned);
+						DJ2[k].copy_to(distance2[k], stdx::element_aligned);
+						for (int l = 0; l < simd_width; ++l)
+						{
+							aI[i + k - I] += factor[k][l] * distance0[k][l];
+							aI[i + k - I + B] += factor[k][l] * distance1[k][l];
+							aI[i + k - I + 2 * B] += factor[k][l] * distance2[k][l];
+						}
+					}
+				}
+			}
+			// update accelerations for block J
+			for (int j = 0; j < B; ++j)
+				aglobal[J + j] += aJ[j];
+			for (int j = 0; j < B; ++j)
+				aglobal[J + j + n] += aJ[j + B];
+			for (int j = 0; j < B; ++j)
+				aglobal[J + j + 2 * n] += aJ[j + 2 * B];
+		} // end J loop
+
+		// update accelerations of block I
+		for (int i = 0; i < B; ++i)
+			aglobal[I + i] += aI[i];
+		for (int i = 0; i < B; ++i)
+			aglobal[I + i + n] += aI[i + B];
+		for (int i = 0; i < B; ++i)
+			aglobal[I + i + 2 * n] += aI[i + 2 * B];
+	} // end I loop
+	// delete thread local data
+	delete[] aI;
+	delete[] aJ;
+}
 
 /** \brief compute acceleration vector from position and masses (vectorized using num_rows x simd_width masses)
  *
  * This version works on structure of arrays data layout using std::simd
  */
-void acceleration_blocked_omp_stdsimd_SoA (int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
+void acceleration_blocked_omp_stdsimd_SoA(int n, double *__restrict__ x, double *__restrict__ m, double *__restrict__ aglobal)
 {
 	std::vector<std::mutex> mutexes(n / B); // one mutex per block
 
@@ -313,9 +473,9 @@ void acceleration_blocked_omp_stdsimd_SoA (int n, double *__restrict__ x, double
 		simd_type DJ2[num_rows]; // distances of bodies j, ..., j+simd_width-1
 		simd_type AJ0, AJ1, AJ2; // accelerations to bodies j, ..., j+simd_width-1
 		simd_type MI[num_rows];	 // broadcasted mass of body i,...,i+num_rows-1
-		simd_type MJ;            // individual masses j
-		simd_type S[num_rows];   // scalar factors
-		simd_type F;	 					 // scalar factors
+		simd_type MJ;						 // individual masses j
+		simd_type S[num_rows];	 // scalar factors
+		simd_type F;						 // scalar factors
 
 		// for conversion from simd_type to scalar
 		double factor[num_rows][simd_width];
@@ -360,67 +520,67 @@ void acceleration_blocked_omp_stdsimd_SoA (int n, double *__restrict__ x, double
 				for (int i = I; i < I + B; i += num_rows)
 				{
 					// load position of body i. This can be reused for the whole block row.
-					for (int k=0; k<num_rows; ++k)
+					for (int k = 0; k < num_rows; ++k)
 					{
-					  XI0[k] = simd_type(x[i+k]);
-					  XI1[k] = simd_type(x[i+k+n]);
-					  XI2[k] = simd_type(x[i+k+2*n]);
-					  MI[k] = simd_type(m[i+k]);					// load *broadcast* for mass masses
+						XI0[k] = simd_type(x[i + k]);
+						XI1[k] = simd_type(x[i + k + n]);
+						XI2[k] = simd_type(x[i + k + 2 * n]);
+						MI[k] = simd_type(m[i + k]); // load *broadcast* for mass masses
 					}
 					for (int j = J; j < J + B; j += simd_width)
 					{
 						// compute interaction of num_rows x simd_width bodies
 
 						// load positions of simd_width particles starting at j
-						XJ0.copy_from(&(x[j]), stdx::element_aligned);		   // x coordinates
-						XJ1.copy_from(&(x[j + n]), stdx::element_aligned);	   // y coordinates
+						XJ0.copy_from(&(x[j]), stdx::element_aligned);				 // x coordinates
+						XJ1.copy_from(&(x[j + n]), stdx::element_aligned);		 // y coordinates
 						XJ2.copy_from(&(x[j + 2 * n]), stdx::element_aligned); // z coordinates
 
 						// distances of body i to all bodies j,...,j+w-1 with power 1,2,3
-						for (int k=0; k<num_rows; ++k)
+						for (int k = 0; k < num_rows; ++k)
 						{
-							DJ0[k] = XJ0 - XI0[k];// difference of x coordinates for simd_width bodies to k
-							DJ1[k] = XJ1 - XI1[k];// difference of x coordinates for simd_width bodies to k
-							DJ2[k] = XJ2 - XI2[k];// difference of x coordinates for simd_width bodies to k
-							S[k] = simd_type(epsilon2);		// regularization
+							DJ0[k] = XJ0 - XI0[k];			// difference of x coordinates for simd_width bodies to k
+							DJ1[k] = XJ1 - XI1[k];			// difference of x coordinates for simd_width bodies to k
+							DJ2[k] = XJ2 - XI2[k];			// difference of x coordinates for simd_width bodies to k
+							S[k] = simd_type(epsilon2); // regularization
 							S[k] += DJ0[k] * DJ0[k];
 							S[k] += DJ1[k] * DJ1[k];
 							S[k] += DJ2[k] * DJ2[k];
-							F = stdx::sqrt(S[k]);		  // compute square roots;
-							S[k] *= F;                    // R to power 3
-							F = simd_type(G);	          // broadcast for gravitational constant
-							S[k] = F / S[k];              // these are the scalar factors up to the masses
+							F = stdx::sqrt(S[k]); // compute square roots;
+							S[k] *= F;						// R to power 3
+							F = simd_type(G);			// broadcast for gravitational constant
+							S[k] = F / S[k];			// these are the scalar factors up to the masses
 						}
 
 						// now we update the accelerations of the masses j,...,j+w-1
-						AJ0.copy_from(&(aJ[j - J]), stdx::element_aligned);			// load x coordinates
-						AJ1.copy_from(&(aJ[j - J + B]), stdx::element_aligned);		// load y coordinates
+						AJ0.copy_from(&(aJ[j - J]), stdx::element_aligned);					// load x coordinates
+						AJ1.copy_from(&(aJ[j - J + B]), stdx::element_aligned);			// load y coordinates
 						AJ2.copy_from(&(aJ[j - J + 2 * B]), stdx::element_aligned); // load z coordinates
-						for (int k=0; k<num_rows; ++k)
+						for (int k = 0; k < num_rows; ++k)
 						{
-							F = MI[k] * S[k];					 // scalar factors with masses
+							F = MI[k] * S[k]; // scalar factors with masses
 							AJ0 -= F * DJ0[k];
 							AJ1 -= F * DJ1[k];
 							AJ2 -= F * DJ2[k];
 						}
-						AJ0.copy_to(&aJ[j - J], stdx::element_aligned);		   // store result
-						AJ1.copy_to(&aJ[j - J + B], stdx::element_aligned);	   // store result
+						AJ0.copy_to(&aJ[j - J], stdx::element_aligned);					// store result
+						AJ1.copy_to(&aJ[j - J + B], stdx::element_aligned);			// store result
 						AJ2.copy_to(&aJ[j - J + 2 * B], stdx::element_aligned); // store result
 
 						// scalar updates for mass i, ..., i+num_rows-1
 						MJ.copy_from(&m[j], stdx::element_aligned); // simd_width masses from j, ..., j+simd_width-1
-						for (int k=0; k<num_rows; ++k)
+						for (int k = 0; k < num_rows; ++k)
 						{
-							F = MJ * S[k];		 // scalar factors with masses
+							F = MJ * S[k]; // scalar factors with masses
 							F.copy_to(factor[k], stdx::element_aligned);
 							DJ0[k].copy_to(distance0[k], stdx::element_aligned);
 							DJ1[k].copy_to(distance1[k], stdx::element_aligned);
 							DJ2[k].copy_to(distance2[k], stdx::element_aligned);
-							for (int l=0; l<simd_width; ++l)
+							for (int l = 0; l < simd_width; ++l)
 							{
-								aI[i+k - I] += factor[k][l] * distance0[k][l];
-								aI[i+k - I + B] += factor[k][l] * distance1[k][l];
-								aI[i+k - I + 2 * B] += factor[k][l] * distance2[k][l];
+								aI[i + k - I] += factor[k][l] * distance0[k][l];
+								aI[i + k - I + B] += factor[k][l] * distance1[k][l];
+								aI[i + k - I + 2 * B] += factor[k][l] * distance2[k][l];
 							}
 						}
 					}
