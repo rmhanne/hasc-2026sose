@@ -13,8 +13,8 @@ ARCHITECTURE = intel
 
 HAVE_MPI = 1
 HAVE_OPENMP = 1
-HAVE_TBB = 1
-HAVE_SYCL = 1
+#HAVE_TBB = 1
+#HAVE_SYCL = 1
 
 ######################
 # set all the different compilers
@@ -35,6 +35,7 @@ CCTBB = g++-14
 # C++ compiler to be used for Intel oneAPI Sycl programs
 DPCPP = icpx -fsycl
 #DPCPP = /Users/peterbastian/Software/local/bin/acpp
+#DPCPP = /netfilec/Home/w/wi126/usr/local/bin/acpp
 
 ######################
 # set compilation options for various configurations
@@ -87,7 +88,7 @@ TBBFLAGS = -I/opt/local/libexec/onetbb/include
 
 # additional flags for Intel oneAPI Sycl compilation 
 DPCPPFLAGS = -I/opt/intel/oneapi/2025.3/include
-#DPCPPFLAGS = 
+#DPCPPFLAGS = -O3
 
 
 ######################

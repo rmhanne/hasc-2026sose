@@ -34,7 +34,7 @@ hello_tbb: hello_tbb.cc Makefile ../make.def
 	$(CCTBB) $(CCFLAGSBASE) $(TBBFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSTBB)
 
 hello_sycl: hello_sycl.cc Makefile ../make.def
-	$(DPCPP) $(CCFLAGSBASE) $(CCFLAGSDPCPP) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
+	$(DPCPP) $(DPCPPFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
