@@ -1,5 +1,6 @@
 all:
 	cd hello && $(MAKE)
+	cd cppthreads && $(MAKE)
 	cd scalar_product && $(MAKE)
 	cd matmul && $(MAKE)
 	cd nbody && $(MAKE)
@@ -10,6 +11,7 @@ all:
 
 clean:
 	cd hello && $(MAKE) clean
+	cd cppthreads && $(MAKE) clean
 	cd scalar_product && $(MAKE) clean
 	cd matmul && $(MAKE) clean
 	cd nbody && $(MAKE) clean

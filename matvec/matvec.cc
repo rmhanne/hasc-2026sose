@@ -49,6 +49,25 @@ void matvec3 (int n, int b, const double* A, const double* x, double* y)
 	        y[i] += A[j*n+i]*x[j];
 }
 
+// y = Ax, A row major, reuse on y but with several summation variables
+void matvec4 (int n, const double* A, const double* x, double* y)
+{
+  const int m=8;
+  double sum[m];
+  for (int i=0; i<n; i++)
+    {
+      for (int k=0; k<m; ++k) 
+        sum[k] = 0.0;
+      for (int j=0; j<n; j+=m)
+        for (int k=0; k<m; ++k) 
+	        sum[k] += A[i*n+j+k]*x[j+k];
+      y[i] = 0.0;
+      for (int k=0; k<m; ++k) 
+        y[i] += sum[k];
+    }
+}
+
+
 // initialize an array
 void initialize (int n, double* A)
 {
@@ -160,6 +179,41 @@ public:
   }
 };
 
+class Experiment4
+{
+  int n;
+  double *A, *x, *y;
+public:
+  // construct an experiment
+  Experiment4 (int n_) : n(n_)
+  {
+    std::cout << "Exp1: " << n << std::endl;
+    A = new (std::align_val_t{64}) double [n*n];
+    if (((size_t)A)%64!=0)
+      std::cout << "Exp1: A not aligned to 64 " << std::endl;
+    initialize(n*n,A);
+    x = new  (std::align_val_t{64})double [n];
+    if (((size_t)x)%64!=0)
+      std::cout << "Exp1: x not aligned to 64 " << std::endl;
+    initialize(n,x);
+    y = new (std::align_val_t{64}) double [n];
+    if (((size_t)y)%64!=0)
+      std::cout << "Exp1: y not aligned to 64 " << std::endl;
+    initialize(n,y);
+  }
+  ~Experiment4 () {delete[]y; delete[]x;  delete[]A;}
+  // run an experiment; can be called several times
+  void operator() () const
+  {
+    matvec4(n,A,x,y);
+  }
+  // report number of operations for one run
+  double operations () const
+  {
+    return 2*n*n;
+  }
+};
+
 // main function runs the experiments and outputs results as csv
 int main (int argc, char** argv)
 {
@@ -205,6 +259,19 @@ int main (int argc, char** argv)
   //     std::cout << result << std::endl;
   //   }
 
+  // experiment 4
+  expnames.push_back("vanilla+multsum");
+  std::cout << expnames.back() << std::endl;
+  std::vector<double> bandwidth4;
+  for (auto n : sizes)
+    { 
+      Experiment4 e(n);
+      auto d = time_experiment(e);
+      double result = d.first*e.operations()/d.second/1e9;
+      bandwidth4.push_back(result);
+      std::cout << result << std::endl;
+    }
+
   // output results
   // Note: size of TLB mentioned in https://www.realworldtech.com/haswell-cpu/5/
   std::cout << "N";
@@ -217,6 +284,7 @@ int main (int argc, char** argv)
       std::cout << ", " << bandwidth1[i];
       std::cout << ", " << bandwidth2[i];
 //      std::cout << ", " << bandwidth3[i];
+      std::cout << ", " << bandwidth4[i];
       std::cout << std::endl;
     }
   
