@@ -9,7 +9,7 @@ int in1=0;   // indicates that thread 1 is in critical section
 int in2=0;   // indicates that thread 2 is in critical section
 int last=1;  // process that arrived last at critical section
 int count=0; // counts how many times the critical section was passed
-std::atomic_flag f; //{ATOMIC_FLAG_INIT};
+std::atomic_flag f{ATOMIC_FLAG_INIT};
 std::atomic<int> acount{0};
 
 void P1_nolock ()
@@ -26,7 +26,7 @@ void P2_nolock ()
 
 void P1_peterson ()
 {
-  //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
   for (int i=0; i<n; i++)
     {
       in1 = 1;     // I want to enter

@@ -95,7 +95,7 @@ int main ()
 {
   std::vector<std::thread> ph1;
   for (int i=0; i<N; ++i)
-    ph1.push_back(std::thread{philosopher2,i});
+    ph1.push_back(std::thread{philosopher1,i});
   for (int i=0; i<N; ++i)
     ph1[i].join();
 }

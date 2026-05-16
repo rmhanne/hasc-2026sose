@@ -2,7 +2,7 @@
 include ../make.def
 
 # define targets
-GENERIC_TARGETS = peterson
+GENERIC_TARGETS = peterson barrier philosophers producer_consumer packaged_task power_method
 OPENMP_TARGETS = 
 ARM_TARGETS = 
 INTEL_TARGETS = 
@@ -30,6 +30,21 @@ all: $(TARGETS)
 
 peterson: peterson.cc Makefile ../make.def
 	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O0 -o $@ $< $(LFLAGS)
+
+barrier: barrier.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
+
+philosophers: philosophers.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
+
+producer_consumer: producer_consumer.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
+
+packaged_task: packaged_task.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
+
+power_method: power_method.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
