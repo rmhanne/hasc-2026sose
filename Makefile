@@ -8,6 +8,7 @@ all:
 	cd stream && $(MAKE)
 	cd transpose && $(MAKE)
 	cd matvec && $(MAKE)
+	cd jacobi && $(MAKE)
 
 clean:
 	cd hello && $(MAKE) clean
@@ -19,5 +20,6 @@ clean:
 	cd stream && $(MAKE) clean
 	cd transpose && $(MAKE) clean
 	cd matvec && $(MAKE) clean
+	cd jacobi && $(MAKE) clean
 
 .PHONY : all clean

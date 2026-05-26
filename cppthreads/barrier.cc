@@ -29,11 +29,11 @@ void barrier (int i)
       count = 0; // reset counter for next turn
       std::cout << "------" << std::endl;
       for (int j=0; j<N; j++)
-	if (flag[j]==1)
-	  {
-	    flag[j] = 0; // the event
-	    cv[j].notify_one(); // wake up
-	  }
+      	if (flag[j]==1)
+	      {
+	        flag[j] = 0; // the event
+	        cv[j].notify_one(); // wake up
+	      }
     }
 }
 

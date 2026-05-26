@@ -44,7 +44,7 @@ packaged_task: packaged_task.cc Makefile ../make.def
 	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
 
 power_method: power_method.cc Makefile ../make.def
-	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 -o $@ $< $(LFLAGS)
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3 $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)

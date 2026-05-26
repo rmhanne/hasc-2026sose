@@ -9,6 +9,8 @@
 #include "time_experiment.hh"
 #include "Barrier.hh"
 
+// kernels that are used by the different versions of power method
+
 // get alignment of a pointer in bytes
 size_t alignment(const void *p)
 {
@@ -19,6 +21,7 @@ size_t alignment(const void *p)
 }
 
 // initialize matrix in column major order
+// each thread initializes its own rows!
 void initialize_matrix(int n, int ibegin, int iend, double *A)
 {
   int w = 10;
@@ -102,6 +105,8 @@ void copy_scale(int n, double a, const double *x, double *y)
     y[i] = a * x[i];
 }
 
+// a sequential implementation
+
 // sequential version of power method
 double lambda_max(int n, double *A)
 {
@@ -136,10 +141,14 @@ double lambda_max(int n, double *A)
     copy_scale(n, 1.0 / norm, y, x);
   }
 
-  delete[] y;
-  delete[] x;
+  // delete arrays with alignment parameter
+  ::operator delete[] (y, std::align_val_t(64));
+  ::operator delete[] (x, std::align_val_t(64));
+
   return muold;
 }
+
+// now the thread parallel version using the following context structure
 
 struct GlobalContext
 {
@@ -168,8 +177,7 @@ struct GlobalContext
   }
 };
 
-// threads executing the power method in parallel
-// SPMD style; all threads execute the same code
+// the function executed in parallel by each thread SPMD style
 void lambda_max_par_thread(std::shared_ptr<GlobalContext> context, int rank)
 {
   int P = context->nthreads;
@@ -226,7 +234,6 @@ void lambda_max_par_thread(std::shared_ptr<GlobalContext> context, int rank)
 
 // a wrapper function that starts all the threads
 // executing the parallel power method
-// how many threads we have can be deduced from flag.size()
 double lambda_max_par(int P, int n, double *A)
 {
   // get global context shared by all threads
@@ -255,9 +262,9 @@ double lambda_max_par(int P, int n, double *A)
   auto itmax = std::max_element(context->elapsed.begin(), context->elapsed.end());
   double elapsed = *itmax;
 
-  // release memory
-  delete[] context->y;
-  delete[] context->x;
+  // delete arrays with alignment parameter
+  ::operator delete[] (context->y, std::align_val_t(64));
+  ::operator delete[] (context->x, std::align_val_t(64));
 
   // compute bandwidth
   double bytes = (1.0 * n * n + n * 7) * 8 * context->iterations;
@@ -268,6 +275,7 @@ double lambda_max_par(int P, int n, double *A)
   return context->lambda_max;
 }
 
+// function to time the barrier
 void time_barrier_thread(std::shared_ptr<GlobalContext> context, int rank)
 {
   int P = context->nthreads;
@@ -382,9 +390,9 @@ double time_matmul(int P, int n, double *A)
   auto stop = get_time_stamp();
   double elapsed = get_duration_seconds(start, stop);
 
-  // release memory
-  delete[] context->y;
-  delete[] context->x;
+  // delete arrays with alignment parameter
+  ::operator delete[] (context->y, std::align_val_t(64));
+  ::operator delete[] (context->x, std::align_val_t(64));
 
   // print result
   std::cout << "matmul duration=" << elapsed << " iterations=" << context->iterations << " time_per_iteration=" << elapsed / context->iterations << std::endl;
@@ -418,12 +426,12 @@ int main(int argc, char **argv)
   double *A = new (std::align_val_t{64}) double[n * n];
 
   // time_matmul(P, n, A);
-  // delete[] A;
+  // ::operator delete[] (A, std::align_val_t(64));
   // return 0;
 
   auto lambda = lambda_max_par(P, n, A);
   std::cout << "lambda_max=" << lambda << std::endl;
-  delete[] A;
+  ::operator delete[] (A, std::align_val_t(64));
 
   return 0;
 }
