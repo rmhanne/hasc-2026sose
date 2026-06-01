@@ -194,8 +194,8 @@ void acceleration_blocked_vectorized_new (int n, double *__restrict__ x, double 
 			aglobal[I + i + 2 * n] += aI[i + 2 * B];
 	} // end I loop
 	// delete thread local data
-	delete[] aI;
-	delete[] aJ;
+	::operator delete[](aI, std::align_val_t(64));
+	::operator delete[](aJ, std::align_val_t(64));
 }
 
 /** \brief compute acceleration vector from position and masses (vectorized using 2x2 masses)
@@ -415,8 +415,8 @@ void acceleration_blocked_vectorized(int n, double *__restrict__ x, double *__re
 
 	} // end I loop
 	// delete thread local data
-	delete[] aI;
-	delete[] aJ;
+	::operator delete[](aI, std::align_val_t(64));
+	::operator delete[](aJ, std::align_val_t(64));
 }
 
 /** \brief do one time step with leapfrog

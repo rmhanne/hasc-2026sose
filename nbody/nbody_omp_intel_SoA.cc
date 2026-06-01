@@ -172,8 +172,8 @@ void acceleration_blocked_buffered_SoA(int n, double *__restrict__ x, double *__
 			aglobal[I + i + 2 * n] += aI[i + 2 * B];
 	} // end I loop
 	// delete thread local data
-	delete[] aI;
-	delete[] aJ;
+	::operator delete[](aI, std::align_val_t(64));
+	::operator delete[](aJ, std::align_val_t(64));
 }
 
 /** \brief compute acceleration vector from position and masses (blocked OMP parallel version)
@@ -275,8 +275,8 @@ void acceleration_blocked_omp_SoA(int n, double *__restrict__ x, double *__restr
 			}
 		} // end I loop
 		// delete thread local data
-		delete[] aI;
-		delete[] aJ;
+		::operator delete[](aI, std::align_val_t(64));
+		::operator delete[](aJ, std::align_val_t(64));
 	}
 }
 
@@ -476,8 +476,8 @@ void acceleration_blocked_omp_vectorized_SoA_new(int n, double *__restrict__ x, 
 			}
 		} // end I loop
 		// delete thread local data
-		delete[] aI;
-		delete[] aJ;
+		::operator delete[](aI, std::align_val_t(64));
+		::operator delete[](aJ, std::align_val_t(64));
 	}
 }
 
@@ -684,13 +684,12 @@ int main(int argc, char **argv)
 		}
 	}
 
-	delete[] a;
-	delete[] x;
-	delete[] v;
-	delete[] m;
-	delete[] A;
-	delete[] X;
-	delete[] V;
+	::operator delete[](x, std::align_val_t(64));
+	::operator delete[](v, std::align_val_t(64));
+	::operator delete[](m, std::align_val_t(64));
+	::operator delete[](A, std::align_val_t(64));
+	::operator delete[](X, std::align_val_t(64));
+	::operator delete[](V, std::align_val_t(64));
 
 	return 0;
 }

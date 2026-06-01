@@ -250,10 +250,10 @@ int main(int argc, char **argv)
   double flop = cnt * (13.0 * n * (n - 1.0) + 12.0 * n);
   printf("%g seconds for %g ops = %g GFLOPS\n", elapsed_total, flop, flop / elapsed_total / 1E9);
 
-  delete[] x;
-  delete[] v;
-  delete[] m;
-  delete[] a;
+  ::operator delete[](x, std::align_val_t(64));
+  ::operator delete[](v, std::align_val_t(64));
+  ::operator delete[](m, std::align_val_t(64));
+  ::operator delete[](a, std::align_val_t(64));
 
   return 0;
 }
