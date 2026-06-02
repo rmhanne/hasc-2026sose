@@ -3,7 +3,7 @@ include ../make.def
 
 # define targets
 GENERIC_TARGETS = jacobi_seq
-OPENMP_TARGETS = jacobi_omp_stdsimd
+OPENMP_TARGETS = jacobi_omp_stdsimd jacobi_omp
 ARM_TARGETS = 
 INTEL_TARGETS = 
 SYCL_TARGETS = 
@@ -35,7 +35,7 @@ jacobi_omp_stdsimd: jacobi_omp_stdsimd.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 jacobi_omp: jacobi_omp.cc Makefile ../make.def
-	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3  $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3  $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
