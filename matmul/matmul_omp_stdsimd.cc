@@ -48,6 +48,20 @@ double compare (int n, double A1[], double A2[])
   return sum;
 }
 
+// tiling in MxM blocks and flipped last two loops in row major layout
+void matmul2(int n, const double A[], const double B[], double C[])
+{
+  #pragma omp parallel for schedule (static) collapse (2)
+  for (int i = 0; i < n; i += M)
+    for (int j = 0; j < n; j += M)
+      for (int k = 0; k < n; k += M)
+        for (int s = i; s < i + M; s += 1)
+          for (int u = k; u < k + M; u += 1)
+            for (int t = j; t < j + M; t += 1)
+              C[INDEX(s, t, n)] += A[INDEX(s, u, n)] * B[INDEX(u, t, n)];
+}
+
+
 template<size_t simd_width>
 struct SIMDSelector
 {
@@ -147,6 +161,7 @@ int main (int argc, char** argv)
   std::cout << "std::simd vectorization with simd_width " << stdx::native_simd<double>::size() << std::endl;
   for (auto i : sizes)
     { 
+      //auto e = make_experiment(initialize, matmul2,i);
       auto e = make_experiment(initialize, matmul_simd,i);
       auto d = time_experiment(e);
       double flops = d.first*e.operations()/d.second/1e9;
