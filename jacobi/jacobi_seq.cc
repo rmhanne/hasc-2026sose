@@ -10,9 +10,10 @@
 #define __restrict__
 #endif
 
-const int B = 20; // the block size
-const int K = 4;  // number of iterations done in one wave version
+const int B = 256; // the block size
+const int K = 4;  // number of iterations done in one wave version; K must be even!
 
+// A global context structure to prepare for thread parallelism
 struct GlobalContext
 {
   // input data
@@ -33,6 +34,7 @@ struct GlobalContext
   }
 };
 
+// compute norm of defect 
 double defect_norm(int n, double *__restrict__ u)
 {
   double sum = 0.0;
@@ -45,12 +47,13 @@ double defect_norm(int n, double *__restrict__ u)
   return sqrt(sum);
 }
 
+// simplest implementation of the Jacobi kernel
+// - perform a fixed number of iterations
+// - use swap to avoid copy
+// - expects input in uold
+// - provides output in uold
 void jacobi_vanilla_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
 {
-  auto d0 = defect_norm(n,uold);
-  auto last=d0;
-  int iter;
-
   // do iterations
   for (int i = 1; i <= iterations; i++)
   {
@@ -61,45 +64,23 @@ void jacobi_vanilla_kernel(int n, int iterations, double *__restrict__ uold, dou
   }
 }
 
+// just calls the kernel using arguments from context structure
 void jacobi_vanilla(std::shared_ptr<GlobalContext> context)
 {
   jacobi_vanilla_kernel(context->n, context->iterations, context->u0, context->u1);
 }
 
-void jacobi_wave_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
+// process indices in square blocks of size BxB, includes tail loops
+// - perform a fixed number of iterations
+// - use swap to avoid copy
+// - expects input in uold
+// - provides output in uold
+void jacobi_blocked_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
 {
-  double *u[2];
-  u[0] = uold;
-  u[1] = unew;
-
-  // do iterations
-  for (int kk = 0; kk < iterations; kk += K)
-    for (int m = 2; m <= n + K - 2; m++)
-      for (int k = std::max(1, m - n + 2); k <= std::min(K, m - 1); k++)
-      {
-        int i1 = m - k;
-        int dst = k % 2;
-        int src = 1 - dst;
-        for (int i0 = 1; i0 < n - 1; i0++)
-          u[dst][i1 * n + i0] = 0.25 * (u[src][i1 * n + i0 - n] + u[src][i1 * n + i0 - 1] + u[src][i1 * n + i0 + 1] + u[src][i1 * n + i0 + n]);
-      }
-}
-
-void jacobi_wave(std::shared_ptr<GlobalContext> context)
-{
-  jacobi_wave_kernel(context->n, context->iterations, context->u0, context->u1);
-}
-
-void jacobi_blocked(std::shared_ptr<GlobalContext> context)
-{
-  int n = context->n;
-  double *uold = context->u0;
-  double *unew = context->u1;
-
   int blocksB = ((n - 2) / B) * B; // number of indices in blocks of size B per direction, excluding boundary 
  
   // do iterations
-  for (int i = 0; i < context->iterations; i++)
+  for (int i = 0; i < iterations; i++)
   {
     for (int I1 = 1; I1 < 1 + blocksB; I1 += B)   // loop over first index in each block
       for (int I0 = 1; I0 < 1 + blocksB; I0 += B) // same in the first direction
@@ -115,111 +96,139 @@ void jacobi_blocked(std::shared_ptr<GlobalContext> context)
         unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
     std::swap(uold, unew);
   }
+}
 
-  // result should be in u1
-  if (context->u1 != uold)
-    std::swap(context->u0, context->u1);
+// just calls the kernel using arguments from context structure
+void jacobi_blocked(std::shared_ptr<GlobalContext> context)
+{
+  jacobi_blocked_kernel(context->n, context->iterations, context->u0, context->u1);
+}
+
+// implements wave variant computing K iterations in an overlapping fashion
+// - perform a fixed number of iterations
+// - use swap to avoid copy
+// - expects input in uold
+// - provides output in unew
+void jacobi_wave_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
+{
+  double *u[2];
+  u[0] = uold;
+  u[1] = unew;
+
+  // do iterations
+  for (int kk = 0; kk < iterations; kk += K) // we do (iterations/K) * K blocks of K iterations (possibly doing too much if K does not divide iterations)
+    for (int m = 2; m <= n + K - 2; m++) // m enumerates the diagonals
+      for (int k = std::max(1, m - n + 2); k <= std::min(K, m - 1); k++) // and k enumerates within a diagonal; start with 1 except when m>=n
+      {
+        int i1 = m - k;
+        int dst = k % 2; // in principle the destination iteration index is kk+k but since kk is a multiple of K: (kk+K)%2 == kk%2
+        int src = 1 - dst;
+        for (int i0 = 1; i0 < n - 1; i0++)
+          u[dst][i1 * n + i0] = 0.25 * (u[src][i1 * n + i0 - n] + u[src][i1 * n + i0 - 1] + u[src][i1 * n + i0 + 1] + u[src][i1 * n + i0 + n]);
+      }
+  // since K is even, the result is in uold = u[0]
+}
+
+void jacobi_wave(std::shared_ptr<GlobalContext> context)
+{
+  jacobi_wave_kernel(context->n, context->iterations, context->u0, context->u1);
 }
 
 // main function runs the experiments and outputs results as csv
 int main(int argc, char **argv)
 {
-  // read parameters
-  int n = 1024;
-  int iterations = 1000;
-  if (argc != 3)
+  std::vector<int> sizes;
+  std::vector<int> iters;
+  int iterations = 2048;
+  for (int n = 512; n < 20000; n *= 2)
   {
-    std::cout << "usage: ./jacobi_seq <size> <iterations>"
-              << std::endl;
-    exit(1);
-  }
-  sscanf(argv[1], "%d", &n);
-  sscanf(argv[2], "%d", &iterations);
-  std::cout << "jacobi_vanilla: n=" << n
-          << " iterations=" << iterations
-          << " memory (mbytes)=" << (n*n)*8.0*2.0/1024.0/1024.0
-          << std::endl;
-
-  // check sizes
-  if (K % 2 == 1)
-  {
-    std::cout << "K must be even" << std::endl;
-    exit(1);
-  }
-  if (iterations % K != 0)
-  {
-    std::cout << "iterations must be a multiple of K=" << K << std::endl;
-    exit(1);
+    sizes.push_back(n+2);
+    iters.push_back(iterations);
+    iterations /= 2;
   }
 
-  // get global context shared by all threads
-  auto context = std::make_shared<GlobalContext>(n,iterations);
-
-  // allocate aligned arrays
-  context->u0 = new (std::align_val_t(64)) double[n * n];
-  context->u1 = new (std::align_val_t(64)) double[n * n];
-
-  // fill boundary values and initial values
-  auto g = [&](int i0, int i1)
-  { return (i0 > 0 && i0 < n - 1 && i1 > 0 && i1 < n - 1)
-               ? 0.0
-               : ((double)(i0 + i1)) / n; };
-
-  // warmup
-  for (int i1 = 0; i1 < n; i1++)
-    for (int i0 = 0; i0 < n; i0++)
-      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
-  auto start = get_time_stamp();
-  jacobi_vanilla(context);
-  auto stop = get_time_stamp();
-  double elapsed = get_duration_seconds(start, stop);
-  double updates = context->iterations;
-  updates *= (n - 2) * (n - 2);
-
-  std::cout << "N,";
-  std::cout << "vanilla,";
-  std::cout << "blocked,";
-  std::cout << "wave,";
-  std::cout << std::endl;
-  std::cout << n * n;
-
-  // vanilla
-  for (int i1 = 0; i1 < n; i1++)
-    for (int i0 = 0; i0 < n; i0++)
-      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
-  start = get_time_stamp();
-  jacobi_vanilla(context);
-  stop = get_time_stamp();
-  elapsed = get_duration_seconds(start, stop);
-  std::cout << "," << updates / elapsed / 1e9;
-
+  std::vector<double> performance_vanilla;
+  std::vector<double> performance_blocked;
+  std::vector<double> performance_wave;
   
-  // blocked
-  for (int i1 = 0; i1 < n; i1++)
-    for (int i0 = 0; i0 < n; i0++)
-      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
-  start = get_time_stamp();
-  jacobi_blocked(context);
-  stop = get_time_stamp();
-  elapsed = get_duration_seconds(start, stop);
-  std::cout << "," << updates / elapsed / 1e9;
+  for (int i = 0; i < sizes.size(); i++)
+  {
+    int n = sizes[i];
+    iterations = iters[i];
 
-  // wave
-  for (int i1 = 0; i1 < n; i1++)
-    for (int i0 = 0; i0 < n; i0++)
-      context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
-  start = get_time_stamp();
-  jacobi_wave(context);
-  stop = get_time_stamp();
-  elapsed = get_duration_seconds(start, stop);
-  std::cout << "," << updates / elapsed / 1e9;
-  std::cout << std::endl;
+    // get global context shared by all threads
+    auto context = std::make_shared<GlobalContext>(n, iterations);
 
-  // deallocate arrays
-  //delete[] context->u1;
-  //delete[] context->u0;
-  ::operator delete[] (context->u1, std::align_val_t(64));
-  ::operator delete[] (context->u0, std::align_val_t(64));
+    // allocate aligned arrays
+    context->u0 = new (std::align_val_t(64)) double[n * n];
+    context->u1 = new (std::align_val_t(64)) double[n * n];
+
+    // fill boundary values and initial values
+    auto g = [&](int i0, int i1)
+    { return (i0 > 0 && i0 < n - 1 && i1 > 0 && i1 < n - 1)
+                 ? 0.0
+                 : ((double)(i0 + i1)) / n; };
+
+    // warmup
+    for (int i1 = 0; i1 < n; i1++)
+      for (int i0 = 0; i0 < n; i0++)
+        context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
+    auto start = get_time_stamp();
+    jacobi_vanilla(context);
+    auto stop = get_time_stamp();
+    double elapsed = get_duration_seconds(start, stop);
+    double updates = context->iterations;
+    updates *= (n - 2) * (n - 2);
+
+    // vanilla
+    std::fill(context->u0, (context->u0) + n, 0.0);
+    for (int i1 = 0; i1 < n; i1++)
+      for (int i0 = 0; i0 < n; i0++)
+        context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
+    start = get_time_stamp();
+    jacobi_vanilla(context);
+    stop = get_time_stamp();
+    elapsed = get_duration_seconds(start, stop);
+    performance_vanilla.push_back(updates / elapsed / 1e9);
+
+    // blocked
+    std::fill(context->u0, (context->u0) + n, 0.0);
+    for (int i1 = 0; i1 < n; i1++)
+      for (int i0 = 0; i0 < n; i0++)
+        context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
+    start = get_time_stamp();
+    jacobi_blocked(context);
+    stop = get_time_stamp();
+    elapsed = get_duration_seconds(start, stop);
+    performance_blocked.push_back(updates / elapsed / 1e9);
+
+    // wave
+    std::fill(context->u0, (context->u0) + n, 0.0);
+    for (int i1 = 0; i1 < n; i1++)
+      for (int i0 = 0; i0 < n; i0++)
+        context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
+    start = get_time_stamp();
+    jacobi_wave(context);
+    stop = get_time_stamp();
+    elapsed = get_duration_seconds(start, stop);
+    performance_wave.push_back(updates / elapsed / 1e9);
+
+    // deallocate arrays
+    // delete[] context->u1;
+    // delete[] context->u0;
+    ::operator delete[](context->u1, std::align_val_t(64));
+    ::operator delete[](context->u0, std::align_val_t(64));
+  }
+
+  // print results
+  std::cout << "jacobi sequential no auto vectorizer" << std::endl;
+  std::cout << "N, vanilla, blocked, wave" << std::endl;
+  for (int i=0; i<sizes.size(); i++)
+    std::cout << sizes[i] << ", " 
+              << performance_vanilla[i] 
+              << ", " << performance_blocked[i] 
+              << ", " << performance_wave[i] 
+              << std::endl;
 
   return 0;
 }
