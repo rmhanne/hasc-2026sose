@@ -34,6 +34,9 @@ jacobi_seq: jacobi_seq.cc Makefile ../make.def
 jacobi_omp_stdsimd: jacobi_omp_stdsimd.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
+jacobi_omp: jacobi_omp.cc Makefile ../make.def
+	$(CC) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking -O3  $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
 
