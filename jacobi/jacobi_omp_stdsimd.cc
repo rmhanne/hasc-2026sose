@@ -58,10 +58,12 @@ double defect_norm(int n, double *__restrict__ u)
 // - provides output in uold
 void jacobi_vanilla_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
 {
+  constexpr int unroll_factor = 8;
+  
   // do iterations
-#pragma omp parallel for schedule(static)
   for (int i = 1; i <= iterations; i++)
   {
+#pragma omp parallel for schedule(static)
     for (int i1 = 1; i1 < n - 1; i1++)
       for (int i0 = 1; i0 < n - 1; i0++)
         unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
@@ -286,6 +288,7 @@ int main(int argc, char **argv)
                  : ((double)(i0 + i1)) / n; };
 
     // warmup
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
@@ -297,7 +300,7 @@ int main(int argc, char **argv)
     updates *= (n - 2) * (n - 2);
 
     // vanilla
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
@@ -309,7 +312,7 @@ int main(int argc, char **argv)
     //std::cout << "vanilla n=" << n << " elapsed=" << elapsed << std::endl;
 
     // stdsimd1
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
@@ -321,7 +324,7 @@ int main(int argc, char **argv)
     //std::cout << "simd1 n=" << n << " elapsed=" << elapsed << std::endl;
 
     // stdsimd2
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);

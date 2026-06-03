@@ -181,7 +181,7 @@ int main(int argc, char **argv)
     updates *= (n - 2) * (n - 2);
 
     // vanilla
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     performance_vanilla.push_back(updates / elapsed / 1e9);
 
     // blocked
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
     performance_blocked.push_back(updates / elapsed / 1e9);
 
     // wave
-    std::fill(context->u0, (context->u0) + n, 0.0);
+    std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);

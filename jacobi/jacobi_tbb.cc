@@ -290,15 +290,15 @@ void jacobi_tbb (std::shared_ptr<GlobalContext> context)
 int main (int argc, char** argv)
 {  
   // compile time known parameters
-  const int K=12; // parameter for wave front and TBB version; K/2 should be odd
+  constexpr int K=12; // parameter for wave front and TBB version; K/2 should be odd
 
-// read parameters
+  // read parameters
   int n=1024;
   int iterations=1000;
   int P=1; 
   if (argc!=4)
     {
-      std::cout << "usage: ./jacobi_vanilla <size> <iterations> <cores>"
+      std::cout << "usage: ./jacobi_tbb <size> <iterations> <cores>"
                 << std::endl;
       exit(1);
     }
@@ -312,6 +312,11 @@ int main (int argc, char** argv)
       std::cout << "K must be even, K=" << K << std::endl;
       exit(1);
     }
+  if ((n-2)%K!=0)
+  {
+    std::cout << "changing n from " << n << " to " << ((n-2)/K)*K + K + 2 << std::endl;
+    n = ((n-2)/K)*K + K + 2;
+  }
   if ((n-2)%K!=0)
     {
       std::cout << "K must divide n-2, K=" << K << " n-2=" << n-2 << std::endl;
@@ -346,6 +351,7 @@ int main (int argc, char** argv)
   std::cout << n*n;
   
   // warmup
+  std::fill(context->u0, (context->u0) + n*n, 0.0);
   for (int i1=0; i1<n; i1++)
     for (int i0=0; i0<n; i0++)
       context->u0[i1*n+i0] = context->u1[i1*n+i0] = bndcond(i0,i1);
@@ -358,6 +364,7 @@ int main (int argc, char** argv)
   // std::cout << "," << updates/elapsed/1e9;
 
   // vanilla
+  std::fill(context->u0, (context->u0) + n*n, 0.0);
   for (int i1=0; i1<n; i1++)
     for (int i0=0; i0<n; i0++)
       context->u0[i1*n+i0] = context->u1[i1*n+i0] = bndcond(i0,i1);
@@ -370,6 +377,7 @@ int main (int argc, char** argv)
   std::cout << "," << updates/elapsed/1e9;
 
   // tbb
+  std::fill(context->u0, (context->u0) + n*n, 0.0);
   for (int i1=0; i1<n; i1++)
     for (int i0=0; i0<n; i0++)
       context->u0[i1*n+i0] = context->u1[i1*n+i0] = bndcond(i0,i1);
