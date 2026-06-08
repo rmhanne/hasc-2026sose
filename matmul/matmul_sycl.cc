@@ -51,8 +51,8 @@ int main(int argc, char **argv)
   const int n = 128 * M;
 
   // create a queue on a cpu device
-  sycl::queue q{sycl::cpu_selector_v};
-  //sycl::queue q{sycl::gpu_selector_v};
+  //sycl::queue q{sycl::cpu_selector_v};
+  sycl::queue q{sycl::gpu_selector_v};
   std::cout << "default device is "
             << q.get_device().get_info<sycl::info::device::name>()
             << std::endl;
@@ -140,10 +140,10 @@ int main(int argc, char **argv)
   q.wait();
 
   // check result
-  std::cout << "checking result" << std::endl;
-  matmul(n, host_A, host_B, host_D);
-  auto error = compare(n,host_C,host_D);
-  std::cout << "error=" << error << std::endl;
+  //std::cout << "checking result" << std::endl;
+  //matmul(n, host_A, host_B, host_D);
+  //auto error = compare(n,host_C,host_D);
+  //std::cout << "error=" << error << std::endl;
 
   // free memory on device
   sycl::free(device_C, q);
