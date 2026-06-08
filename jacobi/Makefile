@@ -3,7 +3,7 @@ include ../make.def
 
 # define targets
 GENERIC_TARGETS = jacobi_seq
-OPENMP_TARGETS = jacobi_omp_stdsimd jacobi_omp
+OPENMP_TARGETS = jacobi_omp_stdsimd jacobi_omp gauss_seidel_omp
 TBB_TARGETS = jacobi_tbb
 ARM_TARGETS = 
 INTEL_TARGETS = 
@@ -39,7 +39,10 @@ jacobi_omp_stdsimd: jacobi_omp_stdsimd.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 jacobi_omp: jacobi_omp.cc Makefile ../make.def
-	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
+gauss_seidel_omp: gauss_seidel_omp.cc Makefile ../make.def
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(VECTORIZATIONFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
 jacobi_tbb: jacobi_tbb.cc Makefile ../make.def
 	$(CCTBB) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(VECTORIZATIONFLAGS) $(TBBFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSTBB)
