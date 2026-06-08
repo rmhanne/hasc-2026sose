@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <array>
-#include <CL/sycl.hpp>
+#include <sycl/sycl.hpp>
 
 #include "nbody_io.hh"
 #include "nbody_generate.hh"
@@ -20,7 +20,8 @@ const double G = 1.0;
 const double epsilon2 = 1E-10;
 
 // global queue
-sycl::queue Q{sycl::property::queue::in_order()};
+sycl::queue Q{sycl::cpu_selector_v};
+//sycl::queue Q{sycl::property::queue::in_order()};
 
 /** \brief compute acceleration vector from position and masses
  * 
@@ -215,10 +216,10 @@ int main (int argc, char** argv)
       x[i][j] = v[i][j] = a[i][j] = 0.0;
 
   // report alignment
-  std::cout << "x aligned at " << alignment(x) << std::endl;
-  std::cout << "v aligned at " << alignment(v) << std::endl;
-  std::cout << "a aligned at " << alignment(a) << std::endl;
-  std::cout << "m aligned at " << alignment(m) << std::endl;
+  // std::cout << "x aligned at " << alignment(x) << std::endl;
+  // std::cout << "v aligned at " << alignment(v) << std::endl;
+  // std::cout << "a aligned at " << alignment(a) << std::endl;
+  // std::cout << "m aligned at " << alignment(m) << std::endl;
   
   // initialize timestep and write first file
   std::cout << "step=" << k << " finalstep=" << timesteps << " time=" << t << " dt=" << dt << std::endl;
@@ -257,6 +258,11 @@ int main (int argc, char** argv)
     }
   double flop = cnt*(13.0*n*(n-1.0)+12.0*n);
   printf("%g seconds for %g ops = %g GFLOPS\n",elapsed_total,flop,flop/elapsed_total/1E9);
+
+	::operator delete[](x, std::align_val_t(64));
+	::operator delete[](v, std::align_val_t(64));
+	::operator delete[](m, std::align_val_t(64));
+	::operator delete[](a, std::align_val_t(64));
 
   return 0;
 }
