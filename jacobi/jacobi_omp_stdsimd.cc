@@ -258,11 +258,11 @@ int main(int argc, char **argv)
   std::vector<int> sizes;
   std::vector<int> iters;
   int iterations = 4096;
-  for (int n = 512; n < 20000; n *= 2)
+  for (int n = 512; n < 30000; n *= 1.5)
   {
     sizes.push_back(n+2);
     iters.push_back(iterations);
-    iterations /= 2;
+    iterations /= 1.8;
   }
 
   std::vector<double> performance_vanilla;
@@ -287,6 +287,7 @@ int main(int argc, char **argv)
                  ? 0.0
                  : ((double)(i0 + i1)) / n; };
 
+    //std::cout << "n=" << n << " iterations=" << iterations << std::endl;
     // warmup
     std::fill(context->u0, (context->u0) + n*n, 0.0);
     for (int i1 = 0; i1 < n; i1++)

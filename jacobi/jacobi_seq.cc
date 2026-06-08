@@ -10,7 +10,7 @@
 #define __restrict__
 #endif
 
-const int B = 256; // the block size
+const int B = 1024; // the block size
 const int K = 4;  // number of iterations done in one wave version; K must be even!
 
 // A global context structure to prepare for thread parallelism
@@ -70,29 +70,25 @@ void jacobi_vanilla(std::shared_ptr<GlobalContext> context)
   jacobi_vanilla_kernel(context->n, context->iterations, context->u0, context->u1);
 }
 
-// process indices in square blocks of size BxB, includes tail loops
+// process indices in blocks of size B in the fast direction, includes tail loops
 // - perform a fixed number of iterations
 // - use swap to avoid copy
 // - expects input in uold
 // - provides output in uold
 void jacobi_blocked_kernel(int n, int iterations, double *__restrict__ uold, double *__restrict__ unew)
 {
-  int blocksB = ((n - 2) / B) * B; // number of indices in blocks of size B per direction, excluding boundary 
+  int blocksB = ((n - 2) / B) * B; // largest number of multiple of B that fits in n-2 
  
   // do iterations
   for (int i = 0; i < iterations; i++)
   {
-    for (int I1 = 1; I1 < 1 + blocksB; I1 += B)   // loop over first index in each block
-      for (int I0 = 1; I0 < 1 + blocksB; I0 += B) // same in the first direction
-        for (int i1 = I1; i1 < I1 + B; i1++)      // loop over individual indices in slow direction
-          for (int i0 = I0; i0 < I0 + B; i0++)    // loop over individual indices in consecutive direction
+    int I0 = 1;
+    for (; I0+B < n; I0 += B)
+      for (int i1 = 1; i1 < n - 1; i1++)
+        for (int i0 = I0; i0 < I0 + B; i0++)    // loop over individual indices in consecutive direction
             unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
-    for (int I0 = 1; I0 < 1 + blocksB; I0 += B)
-      for (int i1 = 1 + blocksB; i1 < n - 1; i1++)
-        for (int i0 = I0; i0 < I0 + B; i0++)
-          unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
-    for (int i1 = 1 + blocksB; i1 < n - 1; i1++)
-      for (int i0 = 1 + blocksB; i0 < n - 1; i0++)
+    for (int i1 = 1; i1 < n - 1; i1++)
+      for (int i0 = I0; i0 < n - 1; i0++)
         unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1] + uold[i1 * n + i0 + n]);
     std::swap(uold, unew);
   }

@@ -8,7 +8,7 @@ ARM_TARGETS = nbody_armneon_SoA nbody_omp_armneon_SoA
 INTEL_TARGETS = nbody_omp_intel_SoA
 MPI_TARGETS =
 TBB_TARGETS =
-SYCL_TARGETS =
+SYCL_TARGETS = nbody_sycl
 
 TARGETS = $(GENERIC_TARGETS)
 ifdef HAVE_OPENMP
@@ -52,6 +52,9 @@ nbody_omp_intel_SoA: nbody_omp_intel_SoA.cc Makefile ../make.def
 
 nbody_omp_stdsimd_SoA: nbody_omp_stdsimd_SoA.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+
+nbody_sycl: nbody_sycl.cc Makefile ../make.def
+	$(DPCPP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(DPCPPFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)
