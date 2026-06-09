@@ -23,13 +23,12 @@ int main (int argc, char** argv)
   // create a buffer that transfers data between host and device
   // Buffers abstract 1,2 or 3-dimensional arrays of a type T
   // The type T must be trivially copyable (consecutive in memory)
-  // buffers provide implicit data transfer
+  // buffers provide *implicit* data transfer
   // you can also manage the data transfers explicitly
   // Class template argument deduction is used to infer
   // template arguments of the buffer class
   // Here, an std:array is used to infer all template args for buffer
-  // the runtime given size and initial values
-  sycl::buffer B{data};
+  sycl::buffer<int,1> B{data};
 
   // submit a task
   // Queues can handle task graphs given by a DAG
