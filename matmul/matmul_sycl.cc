@@ -47,17 +47,17 @@ int main(int argc, char **argv)
   using T = double;
 
   // define block size and matrix size
-  const int M = 32;
-  const int n = 128 * M;
+  const int M = 32;      // tiling size
+  const int n = 32 * M; // total size of the matrix; is a multiple of M
 
-  // create a queue on a cpu device
+  // create a queue on a device
   sycl::queue q{sycl::cpu_selector_v};
   //sycl::queue q{sycl::gpu_selector_v};
   std::cout << "default device is "
             << q.get_device().get_info<sycl::info::device::name>()
             << std::endl;
   
-  // print info
+  // print some info
   auto dev = q.get_device();
   std::cout << "max_work_group_size=" << dev.get_info<sycl::info::device::max_work_group_size>() << std::endl;
   std::cout << "local_mem_size=" << dev.get_info<sycl::info::device::local_mem_size>() << std::endl;
@@ -66,7 +66,7 @@ int main(int argc, char **argv)
     std::cout << "sub_group_sizes=" << sgs[i] << std::endl;
 
   // we use the explicit data movement strategy here
-  // allocate three matrices on host
+  // allocate four matrices on host
   T *host_A = new (std::align_val_t(64)) T[n * n];
   T *host_B = new (std::align_val_t(64)) T[n * n];
   T *host_C = new (std::align_val_t(64)) T[n * n];
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
       int ii = item.get_local_id()[0];
       int jj = item.get_local_id()[1];
 
-      // do the blockec matrix-matrix product
+      // do the blocked matrix-matrix product
       // each work-item computes one element of the matrix, i.e. it multiplies row i by col j
       // and we do this in terms of blocks of size KxK
       T sum = 0.0;
