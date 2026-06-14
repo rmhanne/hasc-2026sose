@@ -257,12 +257,12 @@ int main(int argc, char **argv)
   int nP=omp_get_max_threads();
   std::vector<int> sizes;
   std::vector<int> iters;
-  int iterations = 4096;
-  for (int n = 512; n < 30000; n *= 1.5)
+  int iterations = 2048;
+  for (int n = 512; n < 40000; n *= 1.6)
   {
     sizes.push_back(n+2);
     iters.push_back(iterations);
-    iterations /= 1.8;
+    iterations /= 1.5;
   }
 
   std::vector<double> performance_vanilla;
@@ -306,7 +306,7 @@ int main(int argc, char **argv)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
     start = get_time_stamp();
-    jacobi_vanilla(context);
+//    jacobi_vanilla(context);
     stop = get_time_stamp();
     elapsed = get_duration_seconds(start, stop);
     performance_vanilla.push_back(updates / elapsed / 1e9);
@@ -330,7 +330,7 @@ int main(int argc, char **argv)
       for (int i0 = 0; i0 < n; i0++)
         context->u0[i1 * n + i0] = context->u1[i1 * n + i0] = g(i0, i1);
     start = get_time_stamp();
-    jacobi_omp_stdsimd2(context);
+//    jacobi_omp_stdsimd2(context);
     stop = get_time_stamp();
     elapsed = get_duration_seconds(start, stop);
     performance_stdsimd2.push_back(updates / elapsed / 1e9);
