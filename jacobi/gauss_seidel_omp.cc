@@ -88,22 +88,42 @@ void jacobi_vanilla(std::shared_ptr<GlobalContext> &context)
                         context->u1);
 }
 
-// Run Gauss-Seidel in place until the defect norm has been reduced by a factor
-// tol relative to the initial defect. Since the norm is expensive, it is only
-// evaluated every check_interval sweeps. Returns the number of sweeps done.
+// run Gauss-Seidel in place
 int gauss_seidel_solve(int n, double *__restrict__ u, double tol,
                        int check_interval)
 {
-  // TODO
+  double initial_defect = defect_norm(n, u);
+  if (initial_defect == 0.0) return 0;
+
+  double current_defect = initial_defect;
+  int sweeps = 0;
+
+  while ((current_defect / initial_defect) > tol)
+  {
+    gauss_seidel_vanilla_kernel(n, check_interval, u);
+    sweeps += check_interval;
+    current_defect = defect_norm(n, u);
+  }
+  return sweeps;
 }
 
-// Same convergence loop for Jacobi (two buffers, only old neighbour values).
-// Uses the caller-provided scratch buffer tmp (the context's u1) as the second
-// buffer; the final iterate is written back into u. Returns the number of sweeps done.
+// convergence loop for jacobi
 int jacobi_solve(int n, double *__restrict__ u, double *__restrict__ tmp,
                  double tol, int check_interval)
 {
-  // TODO
+  double initial_defect = defect_norm(n, u);
+  if (initial_defect == 0.0) return 0;
+
+  double current_defect = initial_defect;
+  int sweeps = 0;
+
+  while ((current_defect / initial_defect) > tol)
+  {
+    jacobi_vanilla_kernel(n, check_interval, u, tmp);
+    sweeps += check_interval;
+    current_defect = defect_norm(n, u);
+  }
+  return sweeps;
 }
 
 // Run both methods from the same initial state until the defect has dropped by
@@ -143,6 +163,30 @@ void compare_convergence(std::shared_ptr<GlobalContext> &context, double tol,
 // register each one with verify(...) and benchmark(...) in main() to check
 // correctness against the sequential reference and to measure throughput.
 // ===========================================================================
+
+// This is bad code, but I know and I am proud of it ༼ つ ◕_◕ ༽つ
+void gauss_seidel_naive_kernel(int n, int iterations, double *__restrict__ u)
+{
+  for (int i = 1; i <= iterations; i++)
+  {
+    // this has a data race condition because thread T might update row i1 before thread T-1 finishes updating row i1-1.
+#pragma omp parallel for
+    for (int i1 = 1; i1 < n - 1; i1++)
+    {
+      for (int i0 = 1; i0 < n - 1; i0++)
+      {
+        u[i1 * n + i0] = 0.25 * (u[i1 * n + i0 - n] + u[i1 * n + i0 - 1] +
+                                 u[i1 * n + i0 + 1] + u[i1 * n + i0 + n]);
+      }
+    }
+  }
+}
+
+void gauss_seidel_naive(std::shared_ptr<GlobalContext> &context)
+{
+  gauss_seidel_naive_kernel(context->n, context->iterations, context->u);
+}
+
 
 int main(int argc, char **argv)
 {
@@ -229,6 +273,11 @@ int main(int argc, char **argv)
   // Jacobi throughput for comparison (it is a different iterate, so it is not
   // verified against the Gauss-Seidel reference).
   benchmark("jacobi", jacobi_vanilla);
+
+  compare_convergence(context, tol, check_interval, init);
+  // Look we are running race-condition code that is flawed and breaks :D
+  verify("naive_omp", gauss_seidel_naive);
+  benchmark("naive_omp", gauss_seidel_naive);
 
   // Compare how many sweeps each method needs to reach the tolerance.
   compare_convergence(context, tol, check_interval, init);
