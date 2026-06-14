@@ -3,7 +3,7 @@ include ../make.def
 
 # define targets
 GENERIC_TARGETS = nbody_vanilla
-OPENMP_TARGETS = nbody_omp_SoA nbody_omp_stdsimd_SoA
+OPENMP_TARGETS = nbody_omp_SoA nbody_omp_stdsimd_SoA nbody_omp_stdsimd_SoA_optimized
 ARM_TARGETS = nbody_armneon_SoA nbody_omp_armneon_SoA
 INTEL_TARGETS = nbody_omp_intel_SoA
 MPI_TARGETS =
@@ -53,8 +53,13 @@ nbody_omp_intel_SoA: nbody_omp_intel_SoA.cc Makefile ../make.def
 nbody_omp_stdsimd_SoA: nbody_omp_stdsimd_SoA.cc Makefile ../make.def
 	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
 
+<<<<<<< Updated upstream
 nbody_sycl: nbody_sycl.cc Makefile ../make.def
 	$(DPCPP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(DPCPPFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSDPCPP)
+=======
+nbody_omp_stdsimd_SoA_optimized: nbody_omp_stdsimd_SoA_optimzied.cc Makefile ../make.def
+	$(CCOMP) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(OMPFLAGS) $(STDSIMDFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSOMP)
+>>>>>>> Stashed changes
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)

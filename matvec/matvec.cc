@@ -49,6 +49,8 @@ void matvec3 (int n, int b, const double* A, const double* x, double* y)
 	        y[i] += A[j*n+i]*x[j];
 }
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 // y = Ax, A row major, reuse on y but with several summation variables
 void matvec4 (int n, const double* A, const double* x, double* y)
 {
@@ -68,6 +70,40 @@ void matvec4 (int n, const double* A, const double* x, double* y)
 }
 
 
+=======
+=======
+>>>>>>> Stashed changes
+// Unroll factor B 4
+template<int B=4>
+void matvec4 (int n, const double* A, const double* x, double* y) {
+  for (int i=0; i<n; i++) {
+    double ytmp[B] = {0.0};
+
+
+    const int S = B-1;
+    int j = 0;
+    //Fill our temporary result
+    for (;j+S<n;j+=B) {
+      for (int l=0;l<B;l++) {
+        ytmp[l] += A[i*n+j+l]*x[j+l];
+      }
+    }
+
+    y[i] = ytmp[0];
+    for (int l=1;l<B;l++) {
+      y[i] += ytmp[l];
+    }
+
+    for (; j<n;j++) {
+      y[i] += A[i*n+j]*x[j];
+    }
+  }
+}
+
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 // initialize an array
 void initialize (int n, double* A)
 {
@@ -187,6 +223,8 @@ public:
   // construct an experiment
   Experiment4 (int n_) : n(n_)
   {
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     std::cout << "Exp1: " << n << std::endl;
     A = new (std::align_val_t{64}) double [n*n];
     if (((size_t)A)%64!=0)
@@ -199,13 +237,40 @@ public:
     y = new (std::align_val_t{64}) double [n];
     if (((size_t)y)%64!=0)
       std::cout << "Exp1: y not aligned to 64 " << std::endl;
+=======
+=======
+>>>>>>> Stashed changes
+    std::cout << "Exp4: " << n << std::endl;
+    A = new (std::align_val_t{64}) double [n*n];
+    if (((size_t)A)%64!=0)
+      std::cout << "Exp4: A not aligned to 64 " << std::endl;
+    initialize(n*n,A);
+    x = new (std::align_val_t{64}) double [n];
+    if (((size_t)x)%64!=0)
+      std::cout << "Exp4: x not aligned to 64 " << std::endl;
+    initialize(n,x);
+    y = new (std::align_val_t{64}) double [n];
+    if (((size_t)y)%64!=0)
+      std::cout << "Exp4: y not aligned to 64 " << std::endl;
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
     initialize(n,y);
   }
   ~Experiment4 () {delete[]y; delete[]x;  delete[]A;}
   // run an experiment; can be called several times
   void operator() () const
   {
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     matvec4(n,A,x,y);
+=======
+    matvec4<8>(n,A,x,y);
+>>>>>>> Stashed changes
+=======
+    matvec4<8>(n,A,x,y);
+>>>>>>> Stashed changes
   }
   // report number of operations for one run
   double operations () const
@@ -260,6 +325,8 @@ int main (int argc, char** argv)
   //   }
 
   // experiment 4
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
   expnames.push_back("vanilla+multsum");
   std::cout << expnames.back() << std::endl;
   std::vector<double> bandwidth4;
@@ -271,6 +338,24 @@ int main (int argc, char** argv)
       bandwidth4.push_back(result);
       std::cout << result << std::endl;
     }
+=======
+=======
+>>>>>>> Stashed changes
+  expnames.push_back("unrolled-row-major-4");
+  std::cout << expnames.back() << std::endl;
+  std::vector<double> bandwidth4;
+  for (auto n : sizes)
+  {
+    Experiment4 e(n);
+    auto d = time_experiment(e);
+    double result = d.first*e.operations()/d.second/1e9;
+    bandwidth4.push_back(result);
+    std::cout << result << std::endl;
+  }
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 
   // output results
   // Note: size of TLB mentioned in https://www.realworldtech.com/haswell-cpu/5/

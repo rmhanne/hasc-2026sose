@@ -1,5 +1,5 @@
 #include "time_experiment.hh"
-
+#include <omp.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -49,6 +49,101 @@ void jacobi_vanilla(std::shared_ptr<GlobalContext> &context)
 {
   jacobi_vanilla_kernel(context->n, context->iterations, context->u0,
                         context->u1);
+}
+
+void jacobi_omp_naive_kernel(int n, int iterations, double *__restrict__ uold,
+                           double *__restrict__ unew)
+{
+#pragma omp parallel
+  {
+    for (int k = 1; k <= iterations; k++) {
+
+      // Parallelize
+#pragma omp for
+      for (int i1 = 1; i1 < n - 1; i1++) {
+        for (int i0 = 1; i0 < n - 1; i0++) {
+          unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] +
+                                      uold[i1 * n + i0 - 1] +
+                                      uold[i1 * n + i0 + 1] +
+                                      uold[i1 * n + i0 + n]);
+        }
+      }
+      // Implicit barrier #1
+#pragma omp single
+      {
+        std::swap(uold, unew);
+      }
+      // Implicit barrier #2
+    }
+  }
+}
+void jacobi_omp_naive(std::shared_ptr<GlobalContext> &context) {
+  jacobi_omp_naive_kernel(context->n, context->iterations, context->u0,
+                        context->u1);
+}
+
+void jacobi_omp_relaxed_kernel(int n, int iterations, double *__restrict__ u0,
+                           double *__restrict__ u1) {
+    int num_threads = 1;
+    #pragma omp parallel
+    {
+        #pragma omp single
+        num_threads = 4;//omp_get_num_threads();
+    }
+
+    std::vector<int> curr_iteration(num_threads, 0);
+
+    #pragma omp parallel
+    {
+        int p = omp_get_thread_num();
+        int P = 4;//omp_get_num_threads();
+
+        // Partition
+        int interior_rows = n - 2;
+        int chunk_size = interior_rows / P;
+        int remainder = interior_rows % P;
+
+        int start_row = 1 + p * chunk_size + std::min(p, remainder);
+        int end_row = start_row + chunk_size + (p < remainder ? 1 : 0);
+
+        for (int k = 1; k <= iterations; k++) {
+            // Buffer selection
+            double *uold = (k % 2 != 0) ? u0 : u1;
+            double *unew = (k % 2 != 0) ? u1 : u0;
+
+            //  Wait for neighbors to complete iteration k-1
+            if (p > 0) {
+                int top_neighbour_progress;
+                do {
+                    #pragma omp atomic read
+                    top_neighbour_progress = curr_iteration[p - 1];
+                } while (top_neighbour_progress < k - 1);
+            }
+            if (p < P - 1) {
+                int bottom_neighbour_progress;
+                do {
+                    #pragma omp atomic read
+                    bottom_neighbour_progress = curr_iteration[p + 1];
+                } while (bottom_neighbour_progress < k - 1);
+            }
+
+
+            for (int i1 = start_row; i1 < end_row; i1++) {
+                for (int i0 = 1; i0 < n - 1; i0++) {
+                    unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] +
+                                                uold[i1 * n + i0 - 1] +
+                                                uold[i1 * n + i0 + 1] +
+                                                uold[i1 * n + i0 + n]);
+                }
+            }
+            #pragma omp atomic write
+            curr_iteration[p] = k;
+        }
+    }
+}
+
+void jacobi_omp_relaxed(std::shared_ptr<GlobalContext> &context) {
+  jacobi_omp_relaxed_kernel(context->n, context->iterations, context->u0, context->u1);
 }
 
 // ===========================================================================
@@ -135,4 +230,11 @@ int main(int argc, char **argv)
   // TODO: verify and benchmark your OpenMP kernels here, e.g.
   //   verify("omp", jacobi_omp);
   //   benchmark("omp", jacobi_omp);
+
+  // Add this to the bottom of main()
+  verify("omp_naive", jacobi_omp_naive);
+  benchmark("omp_naive", jacobi_omp_naive);
+
+  verify("omp_relaxed", jacobi_omp_relaxed);
+  benchmark("omp_relaxed", jacobi_omp_relaxed);
 }
