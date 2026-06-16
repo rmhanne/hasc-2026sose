@@ -5,15 +5,15 @@
 # define your architecture, currently supports: generic, arm, intel
 ######################
 
-ARCHITECTURE = intel
+ARCHITECTURE = arm
 
 ######################
 # define availability of programming models by commenting in/out the following lines
 ######################
 
+HAVE_MPI = 1
 HAVE_OPENMP = 1
-#HAVE_MPI = 1
-#HAVE_TBB = 1
+HAVE_TBB = 1
 HAVE_SYCL = 1
 
 ######################
@@ -34,7 +34,7 @@ CCTBB = g++
 
 # C++ compiler to be used for Sycl programs
 #DPCPP = icpx -fsycl
-DPCPP = /home/wi126/local/bin/acpp
+DPCPP = /Users/peterbastian/Software/local/bin/acpp
 
 ######################
 # set compilation options for various configurations
@@ -86,7 +86,7 @@ TBBFLAGS = -I/opt/local/libexec/onetbb/include
 #TBBFLAGS = -I/opt/intel/oneapi/2025.3/include
 
 # additional flags for Sycl compilation 
-DPCPPFLAGS = -O3 
+DPCPPFLAGS = -O3
 #DPCPPFLAGS = -I/opt/intel/oneapi/2025.3/include
 
 ######################
