@@ -107,6 +107,88 @@ int gauss_seidel_solve(int n, double *__restrict__ u, double tol,
   return sweeps;
 }
 
+// 6.2 e
+#define one_update                                                          \
+        u[i1 * n + i0] = 0.25 * (u[i1 * n + i0 - n] + u[i1 * n + i0 - 1] +  \
+                                 u[i1 * n + i0 + 1] + u[i1 * n + i0 + n]);
+
+void gauss_seidel_red_black_kernel(int n, int iterations, double *__restrict__ u)
+{
+  for (int i = 1; i <= iterations; i++)
+  {
+#pragma omp parallel for
+    for (int i1 = 1; i1 < n - 1; i1++)
+    {
+      for (int i0 = 1 + (i1 % 2); i0 < n - 1; i0+=2)
+      {
+        one_update
+      }
+    }
+#pragma omp parallel for
+    for (int i1 = 1; i1 < n - 1; i1++)
+    {
+      for (int i0 = 1 + (1 - i1 % 2); i0 < n - 1; i0+=2)
+      {
+        one_update
+      }
+    }
+  }
+}
+
+void gauss_seidel_red_black(std::shared_ptr<GlobalContext> &context)
+{
+  gauss_seidel_red_black_kernel(context->n, context->iterations, context->u);
+}
+
+int gauss_seidel_red_black_solve(int n, double *__restrict__ u, double tol,
+                                 int check_interval)
+{
+  double initial_defect = defect_norm(n, u);
+  if (initial_defect == 0.0) return 0;
+
+  double current_defect = initial_defect;
+  int sweeps = 0;
+
+  while ((current_defect / initial_defect) > tol)
+  {
+    gauss_seidel_red_black_kernel(n, check_interval, u);
+    sweeps += check_interval;
+    current_defect = defect_norm(n, u);
+  }
+  return sweeps;
+}
+
+int jacobi_solve(int n, double *__restrict__ u, double *__restrict__ tmp,
+                 double tol, int check_interval);
+
+template <typename Init>
+void compare_convergence_red_black(std::shared_ptr<GlobalContext> &context,
+		                   double tol, int check_interval, Init init)
+{
+  const int n = context->n;
+  double *u = context->u;
+
+  init();
+  auto t0 = get_time_stamp();
+  int gs_iters = gauss_seidel_red_black_solve(n, u, tol, check_interval);
+  auto t1 = get_time_stamp();
+
+  init();
+  auto t2 = get_time_stamp();
+  int ja_iters = jacobi_solve(n, u, context->u1, tol, check_interval);
+  auto t3 = get_time_stamp();
+
+  std::cout << "convergence to tol=" << tol << " (defect checked every "
+            << check_interval << " sweeps):\n";
+  std::cout << "  gauss-seidel_red_black: " << gs_iters << " sweeps, "
+            << get_duration_seconds(t0, t1) << " s\n";
+  std::cout << "  jacobi:       " << ja_iters << " sweeps, "
+            << get_duration_seconds(t2, t3) << " s\n";
+  std::cout << "  sweep ratio jacobi/gauss-seidel = "
+            << double(ja_iters) / gs_iters << "\n";
+}
+
+
 // convergence loop for jacobi
 int jacobi_solve(int n, double *__restrict__ u, double *__restrict__ tmp,
                  double tol, int check_interval)
@@ -281,6 +363,13 @@ int main(int argc, char **argv)
 
   // Compare how many sweeps each method needs to reach the tolerance.
   compare_convergence(context, tol, check_interval, init);
+
+  // 6.2 e
+  verify("red_black_omp", gauss_seidel_red_black);
+  benchmark("red_black_omp", gauss_seidel_red_black);
+
+  // Compare how many sweeps each method needs to reach the tolerance.
+  compare_convergence_red_black(context, tol, check_interval, init);
 
   // TODO: verify and benchmark your kernels here, e.g.
   //   verify("wavefront", gauss_seidel_wavefront);
