@@ -269,6 +269,53 @@ void gauss_seidel_naive(std::shared_ptr<GlobalContext> &context)
   gauss_seidel_naive_kernel(context->n, context->iterations, context->u);
 }
 
+// run Gauss-Seidel in place
+int gauss_seidel_naive_solve(int n, double *__restrict__ u, double tol,
+                       int check_interval)
+{
+  double initial_defect = defect_norm(n, u);
+  if (initial_defect == 0.0) return 0;
+
+  double current_defect = initial_defect;
+  int sweeps = 0;
+
+  while ((current_defect / initial_defect) > tol)
+  {
+    gauss_seidel_naive_kernel(n, check_interval, u);
+    sweeps += check_interval;
+    current_defect = defect_norm(n, u);
+  }
+  return sweeps;
+}
+
+
+template <typename Init>
+void compare_convergence_naive(std::shared_ptr<GlobalContext> &context, double tol,
+                               int check_interval, Init init)
+{
+  const int n = context->n;
+  double *u = context->u;
+
+  init();
+  auto t0 = get_time_stamp();
+  int gs_iters = gauss_seidel_naive_solve(n, u, tol, check_interval);
+  auto t1 = get_time_stamp();
+
+  init();
+  auto t2 = get_time_stamp();
+  int ja_iters = jacobi_solve(n, u, context->u1, tol, check_interval);
+  auto t3 = get_time_stamp();
+
+  std::cout << "convergence to tol=" << tol << " (defect checked every "
+            << check_interval << " sweeps):\n";
+  std::cout << "  gauss-seidel: " << gs_iters << " sweeps, "
+            << get_duration_seconds(t0, t1) << " s\n";
+  std::cout << "  jacobi:       " << ja_iters << " sweeps, "
+            << get_duration_seconds(t2, t3) << " s\n";
+  std::cout << "  sweep ratio jacobi/gauss-seidel = "
+            << double(ja_iters) / gs_iters << "\n";
+}
+
 
 int main(int argc, char **argv)
 {
@@ -362,7 +409,7 @@ int main(int argc, char **argv)
   benchmark("naive_omp", gauss_seidel_naive);
 
   // Compare how many sweeps each method needs to reach the tolerance.
-  compare_convergence(context, tol, check_interval, init);
+  compare_convergence_naive(context, tol, check_interval, init);
 
   // 6.2 e
   verify("red_black_omp", gauss_seidel_red_black);
