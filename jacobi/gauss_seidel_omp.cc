@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <omp.h>
 
 struct GlobalContext
 {
@@ -288,6 +289,75 @@ int gauss_seidel_naive_solve(int n, double *__restrict__ u, double tol,
   return sweeps;
 }
 
+// Ex c): pipelined Gauss-Seidel wavefront------------------------------------------
+void gauss_seidel_wavefront_kernel(int n, int iterations, double *__restrict__ u, int B) {
+  // compute global index
+  const int interior = n - 2;
+  const int J = interior / B;
+  int P = omp_get_max_threads();
+  // sync structur. progress[p] contains last global block, finished by thread p
+  // block index is Bidx = sweep_num * J + col_block
+  //                       sweep     * J + block
+  std::vector<int> progress(P, -1);
+
+  #pragma omp parallel shared(progress, u)
+  {
+    int tid = omp_get_thread_num(); // thread id
+
+    int rows_per_thread = interior / P;
+
+    // Thread p owns these rows
+    int row_start = 1 + tid * rows_per_thread;
+    int row_end = (tid == P - 1) ? n - 1 : row_start + rows_per_thread;
+
+    for (int sweep = 0; sweep < iterations; sweep++) {
+      #pragma omp single
+      {
+        for (int p = 0; p < P; p++) {
+          progress[p] = sweep * J - 1;
+        }
+      }
+
+      // syncronize the therads here before the sweep
+      #pragma omp barrier
+      for (int block = 0; block < J; block++) {
+        int global_block = sweep * J + block;
+        // dependency on strip above
+        if (tid > 0) {
+          int upper;
+          do {
+            #pragma omp atomic read
+            upper = progress[tid-1];
+
+          } while (upper < global_block);
+        }
+        int col_begin = 1 + block * B;
+        int col_end = col_begin + B;
+
+        for (int i1 = row_start; i1 < row_end; i1++) {
+          for (int i0 = col_begin; i0 < col_end; i0++) {
+            u[i1*n+i0] =
+              0.25 *
+              (u[i1*n+i0-n] +
+               u[i1*n+i0-1] +
+               u[i1*n+i0+1] +
+               u[i1*n+i0+n]);
+          }
+        }
+        #pragma omp atomic write
+        progress[tid] = global_block;
+      }
+      #pragma omp barrier
+    }
+  }
+}
+
+// I know this is ugly, but its only an exercise right :) ?
+int block_size_wave = 32;
+
+void gauss_seidel_wavefront(std::shared_ptr<GlobalContext> &context) {
+  gauss_seidel_wavefront_kernel(context->n, context->iterations, context->u, block_size_wave);
+}
 
 template <typename Init>
 void compare_convergence_naive(std::shared_ptr<GlobalContext> &context, double tol,
@@ -316,6 +386,54 @@ void compare_convergence_naive(std::shared_ptr<GlobalContext> &context, double t
             << double(ja_iters) / gs_iters << "\n";
 }
 
+// This function runs the blocked wave front scheme with various different 
+// matrix sizes, block sizes and numbers of threads
+void benchmark_wavefront_sweep()
+{
+  std::vector<int> sizes = {130, 258, 514, 1026};
+  std::vector<int> threads = {1, 2, 4, 8};
+  std::vector<int> blocks = {8, 16, 32, 64};
+
+  for (int n : sizes) {
+    for (int P : threads) {
+      omp_set_num_threads(P);
+
+      for (int B : blocks) {
+        // skip invalid block sizes
+        if ((n-2) % B != 0) { continue; }
+
+        auto context = std::make_shared<GlobalContext>(n, 1000);
+
+        auto init = [&]() {
+          for(int i1=0;i1<n;i1++)
+            for(int i0=0;i0<n;i0++) {
+              context->u[i1*n+i0] =
+                (i0>0 && i0<n-1 &&
+                 i1>0 && i1<n-1)
+                ? 0.0
+                : double(i0+i1)/n;
+            }
+        };
+
+        // use the global variable to set new block size
+        block_size_wave = B;
+
+        init();
+
+        // time the experiment :)
+        auto start = get_time_stamp();
+        gauss_seidel_wavefront(context);
+        auto stop = get_time_stamp();
+
+        double updates = 1000.0 * (n-2) * (n-2);
+
+        double time = get_duration_seconds(start, stop);
+        std::cout << "n=" << n << " P=" << P << " B=" << B << "\t -> " 
+                            << updates / time / 1e9 << " GUpdates/s\n";
+      }
+    }
+  }
+}
 
 int main(int argc, char **argv)
 {
@@ -419,6 +537,9 @@ int main(int argc, char **argv)
   compare_convergence_red_black(context, tol, check_interval, init);
 
   // TODO: verify and benchmark your kernels here, e.g.
-  //   verify("wavefront", gauss_seidel_wavefront);
-  //   benchmark("wavefront", gauss_seidel_wavefront);
+  // c)
+  verify("wavefront", gauss_seidel_wavefront);
+  benchmark("wavefront", gauss_seidel_wavefront);
+  // d)
+  benchmark_wavefront_sweep();
 }
