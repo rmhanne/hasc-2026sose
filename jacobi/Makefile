@@ -7,7 +7,8 @@ OPENMP_TARGETS = jacobi_omp_stdsimd jacobi_omp gauss_seidel_omp
 TBB_TARGETS = jacobi_tbb
 ARM_TARGETS = 
 INTEL_TARGETS = 
-SYCL_TARGETS = 
+SYCL_TARGETS =
+MPI_TARGETS = jacobi_mpi
 
 TARGETS = $(GENERIC_TARGETS)
 ifdef HAVE_OPENMP
@@ -24,6 +25,9 @@ ifdef HAVE_SYCL
 endif
 ifdef HAVE_TBB
 	TARGETS += $(TBB_TARGETS)
+endif
+ifdef HAVE_MPI
+	TARGETS += $(MPI_TARGETS)
 endif
 
 # include path for all targets
@@ -46,6 +50,9 @@ gauss_seidel_omp: gauss_seidel_omp.cc Makefile ../make.def
 
 jacobi_tbb: jacobi_tbb.cc Makefile ../make.def
 	$(CCTBB) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(VECTORIZATIONFLAGS) $(TBBFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSTBB)
+
+jacobi_mpi: jacobi_mpi.cc Makefile ../make.def
+	$(CCMPI) -I$(ROOTPATH) -I$(ROOTPATH)benchmarking $(CCFLAGSBASE) $(VECTORIZATIONFLAGS) $(MPIFLAGS) -o $@ $< $(LFLAGS) $(LFLAGSMPI)
 
 debug:
 	@echo $(ARCHITECTURE) $(TARGETS)

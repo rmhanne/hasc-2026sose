@@ -19,7 +19,7 @@
 // basic data type for position, velocity, acceleration
 const int M = 4;
 typedef double double3[M]; // pad up for later use with SIMD
-const int B = 32;          // block size for tiling
+const int B = 64;          // block size for tiling
 
 // model parameters
 const double G = 1.0;          // gravitational constant
@@ -34,8 +34,6 @@ int blocks_total;    // the total number of blocks of size B
 int blocks_per_rank; // number of blocks of size B in each rank
 int masses_per_rank; // number of masses in each rank
 
-// #include "acceleration_async.cc"
-
 // map local block number to global block number
 int g(int i, int r)
 {
@@ -46,6 +44,7 @@ int g(int i, int r)
 }
 
 // mpi parallel version based on blocked AoS
+// a has been cleared already
 void acceleration_blocking(int n, double3 *__restrict__ x, double *__restrict__ m,
                            double3 *__restrict__ a)
 {
@@ -96,21 +95,22 @@ void acceleration_blocking(int n, double3 *__restrict__ x, double *__restrict__ 
 
   // data buffers
   std::vector<std::array<double, M>> xin(masses_per_rank);
-  std::vector<std::array<double, M>> xout(masses_per_rank);
   std::vector<std::array<double, M>> ain(masses_per_rank);
-  std::vector<std::array<double, M>> aout(masses_per_rank);
   std::vector<double> min(masses_per_rank);
+
+  std::vector<std::array<double, M>> xout(masses_per_rank);
   std::vector<double> mout(masses_per_rank);
+  std::vector<std::array<double, M>> aout(masses_per_rank);
 
   // prepare outgoing buffers
   for (int i = 0; i < masses_per_rank; i++)
     for (int j = 0; j < M; j++)
       xout[i][j] = x[i][j]; // send my own positions in first round
   for (int i = 0; i < masses_per_rank; i++)
+    mout[i] = m[i]; // send my own masses in first round
+  for (int i = 0; i < masses_per_rank; i++)
     for (int j = 0; j < M; j++)
       aout[i][j] = 0.0; // other ranks will accumulate to that
-  for (int i = 0; i < masses_per_rank; i++)
-    mout[i] = m[i]; // send my own masses in first round
 
   // message tags
   int x_tag = 42;
@@ -179,7 +179,7 @@ void acceleration_blocking(int n, double3 *__restrict__ x, double *__restrict__ 
   }
 
   // need to shift acceleration one more time, so we get the
-  // computations of the others
+  // computations done by the others
   if (rank % 2 == 0) // to avoid deadlock; P must be even
   {
     MPI_Send(aout.data(), masses_per_rank * M, MPI_DOUBLE, (rank + P - 1) % P, a_tag, MPI_COMM_WORLD);
@@ -331,12 +331,12 @@ int main(int argc, char **argv)
   }
 
   // now broadcast parameters
-  MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&k, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&mod, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&timesteps, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&t, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&dt, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);    // total number of bodies
+  MPI_Bcast(&k, 1, MPI_INT, 0, MPI_COMM_WORLD);    // current time step number (may be loaded from file)
+  MPI_Bcast(&mod, 1, MPI_INT, 0, MPI_COMM_WORLD);  // could also be take n from command line
+  MPI_Bcast(&timesteps, 1, MPI_INT, 0, MPI_COMM_WORLD); // how many steps to do
+  MPI_Bcast(&t, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); // current time (may be read from file)
+  MPI_Bcast(&dt, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);// time step size (my be read from file)
 
   // check sizes
   // number of masses must be a multiple of block size
@@ -357,7 +357,7 @@ int main(int argc, char **argv)
   if (B % 4 != 0)
   {
     if (rank == 0)
-      std::cout << B << "=B is not a multiple of 4 " << std::endl;
+      std::cout << B << "=B is not a multiple of 4 " << std::endl; // why that?
     MPI_Finalize();
     return 0;
   }
@@ -390,11 +390,11 @@ int main(int argc, char **argv)
     for (int j = 3; j < M; j++)
       x[i][j] = v[i][j] = a[i][j] = 0.0;
 
-  // scatter data
+  // scatter data from rank 0 to all, M is the padding parameter
   MPI_Scatter(&x_init[0][0], masses_per_rank * M, MPI_DOUBLE,
               &x[0][0], masses_per_rank * M, MPI_DOUBLE,
               0, MPI_COMM_WORLD);
-  if (rank == 0)
+  if (rank == 0) // this should actually not be necessary; MPI_Scatter should do that
   {
     for (int i = 0; i < masses_per_rank; i++)
       for (int j = 0; j < 3; j++)
@@ -404,7 +404,7 @@ int main(int argc, char **argv)
   MPI_Scatter(&v_init[0][0], masses_per_rank * M, MPI_DOUBLE,
               &v[0][0], masses_per_rank * M, MPI_DOUBLE,
               0, MPI_COMM_WORLD);
-  if (rank == 0)
+  if (rank == 0) // this should actually not be necessary; MPI_Scatter should do that
   {
     for (int i = 0; i < masses_per_rank; i++)
       for (int j = 0; j < 3; j++)
@@ -414,7 +414,7 @@ int main(int argc, char **argv)
   MPI_Scatter(m_init, masses_per_rank, MPI_DOUBLE,
               m, masses_per_rank, MPI_DOUBLE,
               0, MPI_COMM_WORLD);
-  if (rank == 0)
+  if (rank == 0) // this should actually not be necessary; MPI_Scatter should do that
   {
     for (int i = 0; i < masses_per_rank; i++)
       m[i] = m_init[i];
@@ -468,6 +468,17 @@ int main(int argc, char **argv)
   double flop = cnt * (13.0 * n * (n - 1.0) + 12.0 * n);
   if (rank == 0)
     printf("%g seconds for %g ops = %g GFLOPS\n", elapsed_total, flop, flop / elapsed_total / 1E9);
+
+  ::operator delete[](x, std::align_val_t(64));
+	::operator delete[](v, std::align_val_t(64));
+	::operator delete[](m, std::align_val_t(64));
+	::operator delete[](a, std::align_val_t(64));
+  if (rank==0)
+  {
+    ::operator delete[](x_init, std::align_val_t(64));
+	  ::operator delete[](v_init, std::align_val_t(64));
+	  ::operator delete[](m_init, std::align_val_t(64));
+  }
 
   // clean up mpi
   MPI_Finalize();

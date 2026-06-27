@@ -28,7 +28,7 @@ void scalar_product_thread (const int rank, const int P, const int n)
       y[i] = initializery(istart+i);
     }
 
-  // compute the scalar product
+  // compute the scalar product (local part)
   double sum = 0.0;
   for (int i=0; i<x.size(); i++)
     sum += x[i]*y[i];
