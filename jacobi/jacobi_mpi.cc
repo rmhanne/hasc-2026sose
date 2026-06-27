@@ -58,12 +58,36 @@ void halo_exchange(MPI_Comm comm, std::shared_ptr<GlobalContext> context, double
 // compute norm of defect on the parallel communicator comm
 double defect_norm(MPI_Comm comm, int n, double *__restrict__ u)
 {
-  double sum = 0.0;
 
-  // TODO: Compute the *squared* local defect norm here. Then reduce it over all ranks
-  // with, e.g., MPI_Allreduce and only then take the square root.
+  // @Marvin & @Hermann - I am not sure if we are allowed to change the signature of the method. But assuming we aren't allowed
+  // to, I recalculate the rank size here. Otherwise, I think simply passing the context would be smarter as they already contain the computed values
+  int rank, size;
+  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(comm, &size);
 
-  return sqrt(sum);
+  int _rows = n - 2; // Internal rows
+  int _nloc = _rows / size;
+  int _rem  = _rows % size;
+
+  if ( rank < remainder ) _nloc ++;
+  double lsum = 0.0;
+  double gsum = 0.0;
+
+  for (int i1=0;i<=_nloc;++i1) {
+    for (int i0=1;i0<n-1;++i0) {
+      double def = 4.0 * u[i1*n + i0] -
+          (u[(i1-1) * n + i0] +
+           u[(i1+1) * n + i0] +
+           u[(i1) * n + i0-1] +
+           u[(i1) * n + i0+1])
+
+      local_sum += def * def;
+    }
+  }
+
+  MPI_Allreduce(&lsum, &gsum, 1, MPI_DOUBLE, MPI_SUM, comm);
+
+  return std::sqrt(sum);
 }
 
 // One Jacobi sweep over the local strip, repeated context->iterations times.
