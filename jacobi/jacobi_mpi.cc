@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <cassert>
 
 #include <mpi.h>
 
@@ -53,6 +54,30 @@ struct GlobalContext
 // Use a deadlock-free scheme (MPI_Sendrecv, even/odd ordering, or Isend/Irecv).
 void halo_exchange(MPI_Comm comm, std::shared_ptr<GlobalContext> context, double *__restrict__ u)
 {
+  int tag = 50;              // from slide 9 of lecture 20 example
+  int n = context->n;
+  int nloc = context->nloc;
+  int up = context->up;
+  int down = context->down;
+  int rank = context->rank;
+  MPI_Status status;
+
+  if (rank % 2 == 0)
+  {
+    MPI_Send(&u[1 * n + 0], n, MPI_DOUBLE, up, tag, comm);
+    MPI_Recv(&u[0 * n + 0], n, MPI_DOUBLE, up, tag, comm, &status);
+
+    MPI_Send(&u[nloc * n + 0], n, MPI_DOUBLE, down, tag, comm);
+    MPI_Recv(&u[(nloc + 1) * n + 0], n, MPI_DOUBLE, down, tag, comm, &status);
+  }
+  else
+  {
+    MPI_Recv(&u[(nloc + 1) * n + 0], n, MPI_DOUBLE, down, tag, comm, &status);
+    MPI_Send(&u[nloc * n + 0], n, MPI_DOUBLE, down, tag, comm);
+
+    MPI_Recv(&u[0 * n + 0], n, MPI_DOUBLE, up, tag, comm, &status);
+    MPI_Send(&u[1 * n + 0], n, MPI_DOUBLE, up, tag, comm);
+  }
 }
 
 // compute norm of defect on the parallel communicator comm
@@ -138,6 +163,34 @@ int main(int argc, char **argv) {
   // allocate context->u0 / context->u1 of size (nloc + 2) * n, and initialize
   // the strip and boundary/ghost values. Then run jacobi_kernel(MPI_COMM_WORLD,
   // context) and verify against the sequential reference.
+
+  assert(n % size == 0);
+
+  int nloc = n / size;
+
+  context->nloc = nloc;
+  context->row_offset = rank * nloc;
+  if (rank < size - 1)  context->up = rank + 1;
+  if (rank > 0)  context->down = rank - 1;
+  context->u0 = new double[(nloc + 2) * n];
+  context->u1 = new double[(nloc + 2) * n];
+
+  // unchanged from jacobi_seq.cc
+  //
+    // fill boundary values and initial values
+    auto g = [&](int i0, int i1)
+    { return (i0 > 0 && i0 < n - 1 && i1 > 0 && i1 < n - 1)
+                 ? 0.0
+                 : ((double)(i0 + i1)) / n; };
+
+  // modified from jacobi_seq.cc
+    // warmup
+    for (int i1 = 0; i1 < nloc; i1++)
+      for (int i0 = 0; i0 < n; i0++)   // (1 + i1) because row 0 starts at 1
+        context->u0[(1 + i1) * n + i0] = context->u1[(1 + i1) * n + i0]
+                                       = g(i0, context->row_offset + i1);
+ 
+  jacobi_kernel(MPI_COMM_WORLD, context);
 
   MPI_Finalize();
 }
