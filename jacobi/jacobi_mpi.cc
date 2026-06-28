@@ -69,25 +69,25 @@ double defect_norm(MPI_Comm comm, int n, double *__restrict__ u)
   int _nloc = _rows / size;
   int _rem  = _rows % size;
 
-  if ( rank < remainder ) _nloc ++;
+  if ( rank < _rem ) _nloc ++;
   double lsum = 0.0;
   double gsum = 0.0;
 
-  for (int i1=0;i<=_nloc;++i1) {
+  for (int i1=0;i1<=_nloc;++i1) {
     for (int i0=1;i0<n-1;++i0) {
       double def = 4.0 * u[i1*n + i0] -
           (u[(i1-1) * n + i0] +
            u[(i1+1) * n + i0] +
            u[(i1) * n + i0-1] +
-           u[(i1) * n + i0+1])
+           u[(i1) * n + i0+1]);
 
-      local_sum += def * def;
+      lsum += def * def;
     }
   }
 
   MPI_Allreduce(&lsum, &gsum, 1, MPI_DOUBLE, MPI_SUM, comm);
 
-  return std::sqrt(sum);
+  return std::sqrt(gsum);
 }
 
 // One Jacobi sweep over the local strip, repeated context->iterations times.
