@@ -78,6 +78,26 @@ void halo_exchange(MPI_Comm comm, std::shared_ptr<GlobalContext> context, double
     MPI_Recv(&u[0 * n + 0], n, MPI_DOUBLE, up, tag, comm, &status);
     MPI_Send(&u[1 * n + 0], n, MPI_DOUBLE, up, tag, comm);
   }
+  // added this to check, which block sends to which other blocks
+  //std::cout << "rank " << rank << " up=" << context->up << " down=" << context->down << std::endl;
+}
+
+void halo_exchange_nb(MPI_Comm comm, std::shared_ptr<GlobalContext> context, double *__restrict__ u, MPI_Request req[4])
+{
+  int n = context->n;
+  int nloc = context->nloc;
+  int up = context->up;
+  int down = context->down;
+  int tag = 50;
+
+  // Post receives first
+  MPI_Irecv(&u[0 * n],        n, MPI_DOUBLE, up,   tag, comm, &req[0]);
+  MPI_Irecv(&u[(nloc + 1)*n], n, MPI_DOUBLE, down, tag, comm, &req[1]);
+
+  // Then sends
+  MPI_Isend(&u[1 * n],        n, MPI_DOUBLE, up,   tag, comm, &req[2]);
+  MPI_Isend(&u[nloc * n],     n, MPI_DOUBLE, down, tag, comm, &req[3]);
+  //std::cout << "rank " << context->rank << " up=" << context->up << " down=" << context->down << std::endl;
 }
 
 // compute norm of defect on the parallel communicator comm
@@ -118,7 +138,7 @@ double defect_norm(MPI_Comm comm, int n, double *__restrict__ u)
 // One Jacobi sweep over the local strip, repeated context->iterations times.
 // Before each iteration the ghost rows of the source buffer are refreshed via
 // halo_exchange, then every owned interior row (1..nloc) is updated.
-void jacobi_kernel(MPI_Comm comm, std::shared_ptr<GlobalContext> context)
+void jacobi_kernel_blocking(MPI_Comm comm, std::shared_ptr<GlobalContext> context) // changed the naming to keep this older version in the code :) -Marvin
 {
   const int n = context->n;
   const int nloc = context->nloc;
@@ -142,6 +162,45 @@ void jacobi_kernel(MPI_Comm comm, std::shared_ptr<GlobalContext> context)
   }
 
   // make the final iterate available as u0 again
+  context->u0 = uold;
+  context->u1 = unew;
+}
+
+void jacobi_kernel(MPI_Comm comm, std::shared_ptr<GlobalContext> context) {
+  const int n = context->n;
+  const int nloc = context->nloc;
+  double *uold = context->u0;
+  double *unew = context->u1;
+
+  MPI_Request req[4];
+
+  // the following numbers refer to the numbers of the task on the sheet :)
+  for (int it = 0; it < context->iterations; ++it) {
+    // (i) send boundary data
+    halo_exchange_nb(comm, context, uold, req);
+
+    // (ii) compute interior rows
+    for (int i1 = 2; i1 <= nloc - 1; ++i1) {
+      for (int i0 = 1; i0 < n - 1; ++i0) {
+        unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 + n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1]); 
+      }
+    }
+
+    // (iii) wait for halo exchange to complete
+    MPI_Waitall(4, req, MPI_STATUSES_IGNORE);
+
+    // (iv) update boundary rows
+    for (int i0 = 1; i0 < n - 1; ++i0) {
+      int i1 = 1;
+      unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 + n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1]);
+
+      i1 = nloc;
+      unew[i1 * n + i0] = 0.25 * (uold[i1 * n + i0 - n] + uold[i1 * n + i0 + n] + uold[i1 * n + i0 - 1] + uold[i1 * n + i0 + 1]);
+    }
+
+    std::swap(uold, unew);
+  }
+
   context->u0 = uold;
   context->u1 = unew;
 }
@@ -170,8 +229,10 @@ int main(int argc, char **argv) {
 
   context->nloc = nloc;
   context->row_offset = rank * nloc;
-  if (rank < size - 1)  context->up = rank + 1;
-  if (rank > 0)  context->down = rank - 1;
+  //if (rank < size - 1)  context->up = rank + 1;         // Not sure but should up not be rank-1 ?
+  //if (rank > 0)  context->down = rank - 1;
+  context->up = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
+  context->down = (rank < size-1) ? rank + 1 : MPI_PROC_NULL;
   context->u0 = new double[(nloc + 2) * n];
   context->u1 = new double[(nloc + 2) * n];
 
@@ -190,7 +251,7 @@ int main(int argc, char **argv) {
         context->u0[(1 + i1) * n + i0] = context->u1[(1 + i1) * n + i0]
                                        = g(i0, context->row_offset + i1);
  
-  jacobi_kernel(MPI_COMM_WORLD, context);
+  jacobi_kernel_blocking(MPI_COMM_WORLD, context);
 
   MPI_Finalize();
 }
